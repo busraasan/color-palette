@@ -25,6 +25,9 @@ class ProcessedDeStijl(Dataset):
         self.dataset_size = len(next(os.walk(self.path_dict['preview']))[2])
         self.text_model = PaddleOCR(use_angle_cls=True, lang='en')
 
+        self.criteria = (cv2.TERM_CRITERIA_EPS + cv2.TERM_CRITERIA_MAX_ITER, 200, .1)
+        self.flags = cv2.KMEANS_RANDOM_CENTERS
+
     def __len__(self):
         return self.dataset_size
 
@@ -38,6 +41,10 @@ class ProcessedDeStijl(Dataset):
         theme = self.path_dict['theme'] + path_idx + '.png'
 
         text_palettes, text_dominants, text_bboxes = self.extract_text_bbox(text)
+        composed_text_idxs = self.compose_paragraphs(text_bboxes, text_palettes)
+        merged_bboxes = self.merge_bounding_boxes(composed_text_idxs, text_bboxes)
+
+        image_bboxes, image_palette = self.extract_image(preview, image)
 
     def extract_text_bbox(self, img_path) -> tuple[list[list[int]], list[int], list[list[float]]]:
         '''
@@ -59,8 +66,6 @@ class ProcessedDeStijl(Dataset):
         '''
         # Parameters for KMeans.
         n_colors = 3
-        criteria = (cv2.TERM_CRITERIA_EPS + cv2.TERM_CRITERIA_MAX_ITER, 200, .1)
-        flags = cv2.KMEANS_RANDOM_CENTERS
 
         result = self.ocr(img_path, cls=True)[0]
 
@@ -81,7 +86,7 @@ class ProcessedDeStijl(Dataset):
             pixels = np.float32(cropped_image.reshape(-1, 3))
 
             # Apply KMeans to the text area
-            _, labels, palette = cv2.kmeans(pixels, n_colors, None, criteria, 10, flags)
+            _, labels, palette = cv2.kmeans(pixels, n_colors, None, self.criteria, 10, self.flags)
             palette = np.asarray(palette, dtype=np.int64)
             palette_w_white = []
 
@@ -139,6 +144,8 @@ class ProcessedDeStijl(Dataset):
             openCV --> x: left-to-right, y: top--to-bottom
             bbox coordinates --> [[256.0, 1105.0], [1027.0, 1105.0], [1027.0, 1142.0], [256.0, 1142.0]]
                              --> left top, right top, right bottom, left bottom
+
+            TODO: Also return color palettes for each merged box.
         '''
         
         biggest_borders = []
@@ -170,13 +177,33 @@ class ProcessedDeStijl(Dataset):
     def extract_decor_elements(self):
         pass
 
-    def extract_image(self):
+    def extract_image(self, preview_path, image_path):
         '''
             Use Template Matching the put a bounding box around the main image. Use it as the position.
             Extract colors using KMeans.
             Return: image color palettes and position list (as bboxes).
         '''
-        pass
+        
+        preview_image = cv2.imread(preview_path)
+        image = cv2.imread(image_path)
+
+        method = cv2.TM_SQDIFF_NORMED
+        result = cv2.matchTemplate(image, preview_image, method)
+
+        mn,_,mnLoc,_ = cv2.minMaxLoc(result)
+        MPx,MPy = mnLoc
+        trows,tcols = image.shape[:2]
+        bbox = [[MPx,MPy], [MPx+tcols,MPy+trows]]
+        cropped_image = image[MPx:MPx+tcols, MPy:MPy+trows]
+
+        pixels = np.float32(cropped_image.reshape(-1, 3))
+
+        n_colors = 6
+
+        _, labels, palette = cv2.kmeans(pixels, n_colors, None, self.criteria, 10, self.flags)
+        palette = np.asarray(palette, dtype=np.int64)
+
+        return bbox, palette
 
     def generate_graph(self):
         pass
