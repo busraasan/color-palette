@@ -47,9 +47,13 @@ class ProcessedDeStijl(Dataset):
             Extract colors using Kmeans inside the bbox.
             Return the dominant color and the position.
             
-            TODO: Try to combine very close lines as paragraph bbox. 
+            DONE: Try to combine very close lines as paragraph bbox. 
             If the the distance between two bbox is smaller than the bbox height and color is the same,
             we can group them as paragraphs.
+
+            TODO: Cut images automatically from the sides by a margin.
+            When constructing bounding boxes, add these margins back to the coordinates.
+            Sometimes texts are extremely small that the model cannot detect.
 
             Return: text color palettes, dominant colors for each text and position list (as bboxes).
         '''
@@ -130,8 +134,38 @@ class ProcessedDeStijl(Dataset):
 
         return composed_text_idxs
 
-    def compose_bounding_boxes(self, bboxes):
-        pass
+    def merge_bounding_boxes(composed_text_idxs, bboxes):
+        '''
+            openCV --> x: left-to-right, y: top--to-bottom
+            bbox coordinates --> [[256.0, 1105.0], [1027.0, 1105.0], [1027.0, 1142.0], [256.0, 1142.0]]
+                             --> left top, right top, right bottom, left bottom
+        '''
+        
+        biggest_borders = []
+        for idxs in composed_text_idxs:
+            smallest_x = smallest_y = 10000
+            biggest_y = biggest_x = 0
+            if len(idxs) > 1:
+                for idx in idxs:
+                    bbox = bboxes[idx]
+                    bbox_smallest_x, bbox_smallest_y = np.min(bbox, axis=0)
+                    bbox_biggest_x, bbox_biggest_y = np.max(bbox, axis=0)
+
+                    if smallest_x > bbox_smallest_x:
+                        smallest_x = bbox_smallest_x
+                    if smallest_y > bbox_smallest_y:
+                        smallest_y = bbox_smallest_y
+                    if biggest_x < bbox_biggest_x:
+                        biggest_x = bbox_biggest_x
+                    if biggest_y < bbox_biggest_y:
+                        biggest_y =  bbox_biggest_y
+
+                biggest_border = [[smallest_x, smallest_y], [biggest_x, smallest_y], [biggest_x, biggest_y], [smallest_x, biggest_y]]
+                biggest_borders.append(biggest_border)
+            else:
+                print(idxs[0])
+                biggest_borders.append(bboxes[idxs[0]])
+        return biggest_borders
 
     def extract_decor_elements(self):
         pass
