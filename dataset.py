@@ -2,13 +2,16 @@ import torch
 import torch.nn as nn
 from torch.utils.data import Dataset
 
+import os
+
 from paddleocr import PaddleOCR,draw_ocr
 
 from PIL import Image, ImageFont
 import numpy as np
 import cv2
-
-import os
+from sklearn.cluster import KMeans
+from sklearn.metrics import silhouette_score
+from matplotlib.colors import hsv_to_rgb, rgb_to_hsv
 
 class ProcessedDeStijl(Dataset):
     def __init__(self, data_path):
@@ -36,6 +39,7 @@ class ProcessedDeStijl(Dataset):
         path_idx = "{:04d}".format(idx)
         preview = self.path_dict['preview'] + path_idx + '.png'
         background = self.path_dict['background'] + path_idx + '.png'
+        decoration = self.path_dict['decoration'] + path_idx + '.png'
         image = self.path_dict['image'] + path_idx + '.png'
         text = self.path_dict['text'] + path_idx + '.png'
         theme = self.path_dict['theme'] + path_idx + '.png'
@@ -45,6 +49,7 @@ class ProcessedDeStijl(Dataset):
         merged_bboxes = self.merge_bounding_boxes(composed_text_idxs, text_bboxes)
 
         image_bboxes, image_palette = self.extract_image(preview, image)
+        decoration_hsv_palettes, decoration_bboxes = self.extract_decor_elements(decoration)
 
     def extract_text_bbox(self, img_path) -> tuple[list[list[int]], list[int], list[list[float]]]:
         '''
@@ -174,8 +179,72 @@ class ProcessedDeStijl(Dataset):
                 biggest_borders.append(bboxes[idxs[0]])
         return biggest_borders
 
-    def extract_decor_elements(self):
-        pass
+    def extract_decor_elements(self, decoration_path):
+        # Determine the number of dominant colors
+        num_colors = 6
+        
+        # Load the image
+        image = cv2.imread(decoration_path)
+        
+        # Convert the image to the RGB color space
+        image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
+        image2 = image.copy()
+        
+        # Reshape the image to a 2D array of pixels
+        pixels = image.reshape(-1, 3)
+        
+        # Apply K-means clustering with the determined number of colors
+        kmeans = KMeans(n_clusters=num_colors)
+        kmeans.fit(pixels)
+        
+        # Get the RGB values of the dominant colors
+        colors = kmeans.cluster_centers_.astype(int)
+        print("Num of colors: ", len(colors))
+        
+        # Convert the colors to the HSV color space
+        hsv_colors = [] 
+
+        for i, color in enumerate(colors):
+                x, y, z = color
+                if not (252 < x < 256 and 252 < y < 256 and 252 < z < 256):
+                    x, y, z = rgb_to_hsv([x/255, y/255, z/255])
+                    hsv_colors.append([x*180, y*255, z*255])
+        # Convert the image to the HSV color space
+        hsv_image = cv2.cvtColor(image2, cv2.COLOR_RGB2HSV)
+        
+        # Create masks for each dominant color
+        masks = []
+        hsv_colors = np.asarray(hsv_colors, dtype=np.int32)
+        
+        colors = []
+        for i in range(len(hsv_colors)):
+            
+            h, s, v = hsv_colors[i, :]
+            lower_color = hsv_colors[i, :] - np.array([10, 50, 50])
+            upper_color = hsv_colors[i, :] + np.array([10, 255, 255])
+            mask = cv2.inRange(hsv_image, lower_color, upper_color)
+            colors.append([h,s,v])
+            masks.append(mask)
+        
+        # Find contours in each mask
+        contours = []
+        for mask in masks:
+            contours_color, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_NONE)
+            contours.append(contours_color)
+        
+        # Draw bounding boxes around the shapes
+        image_with_boxes = image.copy()
+        bboxes = []
+        for i, contour_color in enumerate(contours):
+            for contour in contour_color:
+                x, y, w, h = cv2.boundingRect(contour)
+                # left top, right top, right bottom, left bottom
+                bboxes.append([[x,y], [x+w, y], [x+w, y+h], [x,y+h]])
+                cv2.rectangle(image_with_boxes, (x, y), (x+w, y+h), (0, 255, 0), 2)
+        
+        # Display the resulting image
+        cv2.imwrite('contour_thingy.jpg', image_with_boxes)
+        return colors, bboxes
 
     def extract_image(self, preview_path, image_path):
         '''
