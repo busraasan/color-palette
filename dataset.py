@@ -5,7 +5,7 @@ from torch.utils.data import Dataset
 import os
 from utils import *
 
-from paddleocr import PaddleOCR,draw_ocr
+from paddleocr import PaddleOCR, draw_ocr
 
 from PIL import Image, ImageFont
 import numpy as np
@@ -107,7 +107,7 @@ class ProcessedDeStijl(Dataset):
             dominants.append(dominant)
             new_bboxes.append(bbox)
 
-        return palettes, dominants, new_bboxes
+        return palettes, dominants, new_bboxes, boxes, texts
 
     def compose_paragraphs(self, text_bboxes, text_palettes):
 
@@ -177,12 +177,33 @@ class ProcessedDeStijl(Dataset):
                 biggest_borders.append(bboxes[idxs[0]])
         return biggest_borders
 
-    def extract_decor_elements(self, decoration_path):
+    def extract_text_directly(self, img_path, white_bg_texts):
+        n_colors = 3
+
+        result = self.ocr.ocr(img_path, cls=True)[0]
+
+        image = Image.open(img_path).convert('RGB')
+        boxes = [line[0] for line in result]
+        texts = [line[1][0].replace(" ", "") for line in result]
+        white_bg_texts = [elem.replace(" ", "") for elem in white_bg_texts]
+        image = cv2.imread(img_path)
+        same_idxs = []
+        new_boxes = []
+        
+        for elem in white_bg_texts:
+            for i, text in enumerate(texts):
+                if similar(elem, text) > 0.85:
+                    new_boxes.append(boxes[i])
+
+        return new_boxes
+
+    def extract_decor_elements(self, decoration_path, preview_path):
         # Determine the number of dominant colors
         num_colors = 6
         
         # Load the image
         image = cv2.imread(decoration_path)
+        preview_image = cv2.imread(preview_path)
         
         # Convert the image to the RGB color space
         image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
@@ -197,7 +218,6 @@ class ProcessedDeStijl(Dataset):
         
         # Get the RGB values of the dominant colors
         colors = kmeans.cluster_centers_.astype(int)
-        print("Num of colors: ", len(colors))
         
         # Convert the colors to the HSV color space
         hsv_colors = [] 
@@ -238,11 +258,34 @@ class ProcessedDeStijl(Dataset):
                 x, y, w, h = cv2.boundingRect(contour)
                 # left top, right top, right bottom, left bottom
                 bboxes.append([[x,y], [x+w, y], [x+w, y+h], [x,y+h]])
-                cv2.rectangle(image_with_boxes, (x, y), (x+w, y+h), (0, 255, 0), 2)
-                # for each bounding box crop the image and use template matching to get real bounding boxes
 
+        new_bboxes = delete_too_small_bboxes(np.asarray(bboxes))
+        return colors, new_bboxes
 
-        return colors, bboxes
+    def map_decoration_coordinates(self, design_text_coordinate, text_coordinate, decoration_coordinates, prev_size, text_size):
+        # --> [[256.0, 1105.0], [1027.0, 1105.0], [1027.0, 1142.0], [256.0, 1142.0]]
+        # --> left top, right top, right bottom, left bottom
+
+        prev_x, prev_y = prev_size
+        text_x, text_y = text_size
+
+        print("PREV SIZE TEXT SIZEEE")
+        print(prev_size, text_size)
+
+        design_x, design_y = design_text_coordinate[0]
+        text_x, text_y = text_coordinate[0]
+
+        diff_x = text_x - design_x
+        diff_y = text_y - design_y
+        
+        new_coordinates = []
+        for coordinate in decoration_coordinates:
+            new_coor = []
+            for elem in coordinate:
+                new_coor.append([elem[0]-diff_x, elem[1]-diff_y])
+            new_coordinates.append(new_coor)
+
+        return new_coordinates
 
     def extract_image(self, preview_path, image_path):
         '''
@@ -252,8 +295,18 @@ class ProcessedDeStijl(Dataset):
         '''
         
         preview_image = cv2.imread(preview_path)
-        cropped_image_path = trim_image(image_path)
+        cropped_image_path = trim_image(image_path, "02_image")
         image = cv2.imread(cropped_image_path)
+
+        if image.shape[0] > preview_image.shape[0]:
+            diff_x = image.shape[0] - preview_image.shape[0]
+            image = image[(diff_x//2+1):image.shape[0]-(diff_x//2+1), :]
+        
+        if image.shape[1] > preview_image.shape[1]:
+            diff_y = image.shape[1] - preview_image.shape[1]
+            image = image[:, (diff_y//2+1):image.shape[1]-(diff_y//2+1)]
+
+        print(image.shape, preview_image.shape)
 
         method = cv2.TM_SQDIFF_NORMED
         result = cv2.matchTemplate(image, preview_image, method)
@@ -273,7 +326,6 @@ class ProcessedDeStijl(Dataset):
         return [bbox], palette
 
     def process_dataset(self):
-        print("hello")
 
         for idx in range(self.dataset_size):
             path_idx = "{:04d}".format(idx)
@@ -284,14 +336,18 @@ class ProcessedDeStijl(Dataset):
             text = self.path_dict['text'] + path_idx + '.png'
             theme = self.path_dict['theme'] + path_idx + '.png'
 
-            text_palettes, text_dominants, text_bboxes = self.extract_text_bbox(text, preview)
+            text_palettes, text_dominants, text_bboxes, white_bg_text_boxes, texts = self.extract_text_bbox(text, preview)
+            text_bboxes_from_design = self.extract_text_directly(preview, texts)
             composed_text_idxs = self.compose_paragraphs(text_bboxes, text_palettes)
             merged_bboxes = self.merge_bounding_boxes(composed_text_idxs, text_bboxes)
 
             image_bboxes, image_palette = self.extract_image(preview, image)
-            decoration_hsv_palettes, decoration_bboxes = self.extract_decor_elements(decoration)
+            decoration_hsv_xpalettes, decoration_bboxes = self.extract_decor_elements(decoration, preview)
+            image_prev = cv2.imread(preview)
+            image_text = cv2.imread(text)
+            mapped_decoration_bboxes = self.map_decoration_coordinates(text_bboxes_from_design[0], white_bg_text_boxes[0], decoration_bboxes, (image_prev.shape[0], image_prev.shape[1]), (image_text.shape[0], image_text.shape[1]))
 
-            create_xml("../destijl_dataset/xmls/03_decoration", path_idx+".xml", decoration_bboxes)
+            create_xml("../destijl_dataset/xmls/03_decoration", path_idx+".xml", mapped_decoration_bboxes)
             create_xml("../destijl_dataset/xmls/04_text", path_idx+".xml", merged_bboxes)
             create_xml("../destijl_dataset/xmls/02_image", path_idx+".xml",  image_bboxes)
 
