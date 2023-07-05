@@ -10,6 +10,7 @@ from xml.etree.ElementTree import parse, Element, SubElement, ElementTree
 import xml.etree.ElementTree as ET
 
 from PIL import Image, ImageChops
+from difflib import SequenceMatcher
 
 def bgr2rgb(color):
     x, y, z = color
@@ -86,7 +87,7 @@ def create_xml(folder, filename, bbox_list):
     xml_filename = os.path.join('.', folder, os.path.splitext(filename)[0] + '.xml')
     tree.write(xml_filename)
 
-def trim_image(img_path):
+def trim_image(img_path, layer_type):
     x = img_path.split("/")
     with Image.open(img_path) as im:
         bg = Image.new(im.mode, im.size, im.getpixel((0,0)))
@@ -95,10 +96,57 @@ def trim_image(img_path):
         bbox = diff.getbbox()
         if bbox:
             im = im.crop(bbox)
-        im = im.save("../destijl_dataset/02_image_cropped/"+x[-1])
+        im = im.save("../destijl_dataset/"+layer_type+"_cropped/"+x[-1])
 
-    return "../destijl_dataset/02_image_cropped/"+x[-1]
+    return "../destijl_dataset/"+layer_type+"_cropped/"+x[-1]
 
-if __name__ == "__main__":
-    trim_image("../destijl_dataset/02_image/0003.png")
+def NMS(boxes, overlapThresh = 0.98):
+    #return an empty list, if no boxes given
+    if len(boxes) == 0:
+        return []
+    x1 = boxes[:, 0]  # x coordinate of the top-left corner
+    y1 = boxes[:, 1]  # y coordinate of the top-left corner
+    x2 = boxes[:, 2]  # x coordinate of the bottom-right corner
+    y2 = boxes[:, 3]  # y coordinate of the bottom-right corner
+    # compute the area of the bounding boxes and sort the bounding
+    # boxes by the bottom-right y-coordinate of the bounding box
+    areas = (x2 - x1 + 1) * (y2 - y1 + 1) # We have a least a box of one pixel, therefore the +1
+    indices = np.arange(len(x1))
+    for i,box in enumerate(boxes):
+        temp_indices = indices[indices!=i]
+        xx1 = np.maximum(box[0], boxes[temp_indices,0])
+        yy1 = np.maximum(box[1], boxes[temp_indices,1])
+        xx2 = np.minimum(box[2], boxes[temp_indices,2])
+        yy2 = np.minimum(box[3], boxes[temp_indices,3])
+        w = np.maximum(0, xx2 - xx1 + 1)
+        h = np.maximum(0, yy2 - yy1 + 1)
+        # compute the ratio of overlap
+        overlap = (w * h) / areas[temp_indices]
+        if np.any(overlap) > overlapThresh:
+            indices = indices[indices != i]
+    return boxes[indices].astype(int)
+
+def delete_same_bboxes(boxes):
+    pass
+
+def delete_too_small_bboxes(boxes):
+    x1 = boxes[:, 0]  # x coordinate of the top-left corner
+    y1 = boxes[:, 1]  # y coordinate of the top-left corner
+    x2 = boxes[:, 2]  # x coordinate of the bottom-right corner
+    y2 = boxes[:, 3]  # y coordinate of the bottom-right corner
+
+    for i, box in enumerate(boxes):
+        xx1 = box[0]
+        yy1 = box[1]
+        xx2 = box[2]
+        yy2 = box[3]
+        w = np.maximum(0, xx2 - xx1 + 1)
+        h = np.maximum(0, yy2 - yy1 + 1)
+        if w*h < 5:
+            indices = indices[indices != i]
+    return boxes[indices].astype(int)
+
+def similar(a, b):
+    return SequenceMatcher(None, a, b).ratio()
+
     
