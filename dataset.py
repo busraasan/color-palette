@@ -153,6 +153,8 @@ class ProcessedDeStijl(Dataset):
         '''
         
         biggest_borders = []
+        if len(bboxes) == 0:
+            return biggest_borders
         for idxs in composed_text_idxs:
             smallest_x = smallest_y = 10000
             biggest_y = biggest_x = 0
@@ -186,14 +188,42 @@ class ProcessedDeStijl(Dataset):
         boxes = [line[0] for line in result]
         texts = [line[1][0].replace(" ", "") for line in result]
         white_bg_texts = [elem.replace(" ", "") for elem in white_bg_texts]
+        print("TEXTS")
+        print(texts)
+        print("WHITE BG TEXTS")
+        print(white_bg_texts)
         image = cv2.imread(img_path)
         same_idxs = []
         new_boxes = []
         
-        for elem in white_bg_texts:
+        for j, elem in enumerate(white_bg_texts):
             for i, text in enumerate(texts):
                 if similar(elem, text) > 0.85:
                     new_boxes.append(boxes[i])
+                if i+1 != len(texts):
+                    if similar(elem, text + texts[i+1]) > 0.85:
+                        print("similar??")
+                        # merge boxes
+                        bboxes = [boxes[i], boxes[i+1]]
+                        smallest_x = 1000
+                        smallest_x = smallest_y = 10000
+                        biggest_y = biggest_x = 0
+                        for idx in [0, 1]:
+                            bbox = bboxes[idx]
+                            bbox_smallest_x, bbox_smallest_y = np.min(bbox, axis=0)
+                            bbox_biggest_x, bbox_biggest_y = np.max(bbox, axis=0)
+
+                            if smallest_x > bbox_smallest_x:
+                                smallest_x = bbox_smallest_x
+                            if smallest_y > bbox_smallest_y:
+                                smallest_y = bbox_smallest_y
+                            if biggest_x < bbox_biggest_x:
+                                biggest_x = bbox_biggest_x
+                            if biggest_y < bbox_biggest_y:
+                                biggest_y =  bbox_biggest_y
+
+                        biggest_border = [[smallest_x, smallest_y], [biggest_x, smallest_y], [biggest_x, biggest_y], [smallest_x, biggest_y]]
+                        new_boxes.append(biggest_border) 
 
         return new_boxes
 
@@ -269,9 +299,6 @@ class ProcessedDeStijl(Dataset):
         prev_x, prev_y = prev_size
         text_x, text_y = text_size
 
-        print("PREV SIZE TEXT SIZEEE")
-        print(prev_size, text_size)
-
         design_x, design_y = design_text_coordinate[0]
         text_x, text_y = text_coordinate[0]
 
@@ -306,8 +333,6 @@ class ProcessedDeStijl(Dataset):
             diff_y = image.shape[1] - preview_image.shape[1]
             image = image[:, (diff_y//2+1):image.shape[1]-(diff_y//2+1)]
 
-        print(image.shape, preview_image.shape)
-
         method = cv2.TM_SQDIFF_NORMED
         result = cv2.matchTemplate(image, preview_image, method)
         mn,_,mnLoc,_ = cv2.minMaxLoc(result)
@@ -327,7 +352,8 @@ class ProcessedDeStijl(Dataset):
 
     def process_dataset(self):
 
-        for idx in range(self.dataset_size):
+        for idx in range(345, self.dataset_size):
+            print("CURRENTLY AT: ", idx)
             path_idx = "{:04d}".format(idx)
             preview = self.path_dict['preview'] + path_idx + '.png'
             background = self.path_dict['background'] + path_idx + '.png'
@@ -338,17 +364,20 @@ class ProcessedDeStijl(Dataset):
 
             text_palettes, text_dominants, text_bboxes, white_bg_text_boxes, texts = self.extract_text_bbox(text, preview)
             text_bboxes_from_design = self.extract_text_directly(preview, texts)
-            composed_text_idxs = self.compose_paragraphs(text_bboxes, text_palettes)
-            merged_bboxes = self.merge_bounding_boxes(composed_text_idxs, text_bboxes)
+            composed_text_idxs = self.compose_paragraphs(text_bboxes_from_design, text_palettes)
+            merged_bboxes = self.merge_bounding_boxes(composed_text_idxs, text_bboxes_from_design)
 
             image_bboxes, image_palette = self.extract_image(preview, image)
-            decoration_hsv_xpalettes, decoration_bboxes = self.extract_decor_elements(decoration, preview)
+            #decoration_hsv_xpalettes, decoration_bboxes = self.extract_decor_elements(decoration, preview)
             image_prev = cv2.imread(preview)
             image_text = cv2.imread(text)
-            mapped_decoration_bboxes = self.map_decoration_coordinates(text_bboxes_from_design[0], white_bg_text_boxes[0], decoration_bboxes, (image_prev.shape[0], image_prev.shape[1]), (image_text.shape[0], image_text.shape[1]))
+            #mapped_decoration_bboxes = self.map_decoration_coordinates(text_bboxes_from_design[0], white_bg_text_boxes[0], decoration_bboxes, (image_prev.shape[0], image_prev.shape[1]), (image_text.shape[0], image_text.shape[1]))
 
-            create_xml("../destijl_dataset/xmls/03_decoration", path_idx+".xml", mapped_decoration_bboxes)
-            create_xml("../destijl_dataset/xmls/04_text", path_idx+".xml", merged_bboxes)
+            #create_xml("../destijl_dataset/xmls/03_decoration", path_idx+".xml", mapped_decoration_bboxes)
+            if len(merged_bboxes) == 0:
+                create_xml("../destijl_dataset/xmls/04_text", path_idx+".xml", [[[0,0],[0,0],[0,0],[0,0]]])
+            else:
+                create_xml("../destijl_dataset/xmls/04_text", path_idx+".xml", merged_bboxes)
             create_xml("../destijl_dataset/xmls/02_image", path_idx+".xml",  image_bboxes)
 
 if __name__ == "__main__":
