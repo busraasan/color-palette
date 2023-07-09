@@ -14,6 +14,10 @@ from sklearn.cluster import KMeans
 from sklearn.metrics import silhouette_score
 from matplotlib.colors import hsv_to_rgb, rgb_to_hsv
 
+from torchvision.models import resnet50, ResNet50_Weights
+
+from model.graph import DesignGraph
+
 class ProcessedDeStijl(Dataset):
     def __init__(self, data_path):
         self.path = data_path
@@ -31,6 +35,8 @@ class ProcessedDeStijl(Dataset):
 
         self.criteria = (cv2.TERM_CRITERIA_EPS + cv2.TERM_CRITERIA_MAX_ITER, 200, .1)
         self.flags = cv2.KMEANS_RANDOM_CENTERS
+        
+        self.pretrained_model = resnet50(weights=ResNet50_Weights.IMAGENET1K_V1)
 
     def __len__(self):
         return self.dataset_size
@@ -44,7 +50,43 @@ class ProcessedDeStijl(Dataset):
         background = self.path_dict['background'] + path_idx + '.png'
         image = self.path_dict['image'] + path_idx + '.png'
         text = self.path_dict['text'] + path_idx + '.png'
-        
+
+        self.img_path_dict = {
+            'preview': self.data_path + '/00_preview/' + path_idx + '.png',
+            'background': self.data_path + '/01_background/' + path_idx + '.png',
+            'image': self.data_path + '/02_image/' + path_idx + '.png',
+            'text': self.data_path + '/04_text/' + path_idx + '.png',
+        }
+
+        self.annotation_path_dict = {
+            'preview': self.data_path + '/xmls/' +'/00_preview/' + path_idx + '.xml',
+            'background': self.data_path + '/xmls/' + '/01_background/' + path_idx + '.xml',
+            'image': self.data_path + '/xmls/' + '/02_image/' + path_idx + '.xml',
+            'text': self.data_path + '/xmls/' + '/04_text/' + path_idx + '.xml',
+        }
+
+        self.layers = ['image', 'background', 'text'] # Take this from config file later
+       
+        all_bboxes = {
+            'image':[], 
+            'background':[], 
+            'text':[]
+        }
+        all_images = {
+            'image':[], 
+            'background':[], 
+            'text':[]
+        }
+        for i, layer in enumerate(self.layers):
+            img = np.array(Image.open(self.img_path_dict[layer]).convert('RGB'))
+            bboxes = VOC2bbox(self.annotation_path_dict[layer])
+            # [[smallest_x, smallest_y], [biggest_x, smallest_y], [biggest_x, biggest_y], [smallest_x, biggest_y]]
+            all_bboxes[layer] = bboxes
+            all_images[layer] = img
+
+        DesignGraph(self.pretrained_model, all_images, all_bboxes, self.layers)
+        return DesignGraph
+            
     ######### RUNTIME EXTRACTION ###########
     def extract_text_color_from_design(self, preview_path, text_bboxes):
         image = Image.open(preview_path).convert('RGB')
@@ -242,6 +284,7 @@ class ProcessedDeStijl(Dataset):
         return biggest_borders
 
     def mini_kmeans(self, biggest_border, n_colors, image):
+        # for text
         x, y = int(biggest_border[0][0]), int(biggest_border[0][1])
         z, t = int(biggest_border[2][0]), int(biggest_border[2][1])
         cropped_image = image[y:t, x:z]
