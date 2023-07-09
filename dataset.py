@@ -36,7 +36,67 @@ class ProcessedDeStijl(Dataset):
         return self.dataset_size
 
     def __getitem__(self, idx):
-        pass
+        '''
+            Return a graph object based on the information
+        '''
+        path_idx = "{:04d}".format(idx)
+        preview = self.path_dict['preview'] + path_idx + '.png'
+        background = self.path_dict['background'] + path_idx + '.png'
+        image = self.path_dict['image'] + path_idx + '.png'
+        text = self.path_dict['text'] + path_idx + '.png'
+        
+    ######### RUNTIME EXTRACTION ###########
+    def extract_text_color_from_design(self, preview_path, text_bboxes):
+        image = Image.open(preview_path).convert('RGB')
+        n_colors = 2
+        text_colors = []
+        for bbox in text_bboxes:
+            # Crop the text area
+            x, y = int(bbox[0][0]), int(bbox[0][1])
+            z, t = int(bbox[2][0]), int(bbox[2][1])
+            cropped_image = image[y:t, x:z]
+
+            # Apply KMeans to the text area
+            pixels = np.float32(cropped_image.reshape(-1, 3))
+            _, labels, palette = cv2.kmeans(pixels, n_colors, None, self.criteria, 10, self.flags)
+            palette = np.asarray(palette, dtype=np.int64)
+            palette_w_white = []
+
+            for i, color in enumerate(palette):
+                x, y, z = color
+                palette_w_white.append(color)
+
+            _, counts = np.unique(labels, return_counts=True)
+            text_color = palette_w_white[np.argmin(counts)]
+            background_color = palette_w_white[np.argmax(counts)]
+            text_colors.append(text_color)
+        return text_colors
+
+    def extract_image_color_from_design(self, preview_path, image_bboxes):
+        image = Image.open(preview_path).convert('RGB')
+        n_colors = 2
+        img_colors = []
+        for bbox in image_bboxes:
+            # Crop the text area
+            x, y = int(bbox[0][0]), int(bbox[0][1])
+            z, t = int(bbox[2][0]), int(bbox[2][1])
+            cropped_image = image[y:t, x:z]
+
+            # Apply KMeans to the text area
+            pixels = np.float32(cropped_image.reshape(-1, 3))
+            _, labels, palette = cv2.kmeans(pixels, n_colors, None, self.criteria, 10, self.flags)
+            palette = np.asarray(palette, dtype=np.int64)
+            palette_w_white = []
+
+            for i, color in enumerate(palette):
+                x, y, z = color
+                palette_w_white.append(color)
+
+            img_colors.append(palette_w_white)
+
+        return img_colors
+
+    ######### PROCESSING AND ANNOTATING THE DATASET ###########
 
     def extract_text_bbox(self, img_path, preview_image_path):
         '''
@@ -87,27 +147,27 @@ class ProcessedDeStijl(Dataset):
             # --> left top, right top, right bottom, left bottom
             bbox = [[MPx,MPy], [MPx+tcols, MPy], [MPx+tcols, MPy+trows], [MPx, MPy+trows]]
 
-            # Apply KMeans to the text area
-            pixels = np.float32(cropped_image.reshape(-1, 3))
-            _, labels, palette = cv2.kmeans(pixels, n_colors, None, self.criteria, 10, self.flags)
-            palette = np.asarray(palette, dtype=np.int64)
-            palette_w_white = []
+            # # Apply KMeans to the text area
+            # pixels = np.float32(cropped_image.reshape(-1, 3))
+            # _, labels, palette = cv2.kmeans(pixels, n_colors, None, self.criteria, 10, self.flags)
+            # palette = np.asarray(palette, dtype=np.int64)
+            # palette_w_white = []
 
-            for i, color in enumerate(palette):
-                x, y, z = color
-                # Do not add white to the palette since it is the same background in every pic.
-                if not (252 < x < 256 and 252 < y < 256 and 252 < z < 256):
-                    palette_w_white.append(color)
-                else:
-                    labels = np.delete(labels, np.where(labels == i))
+            # for i, color in enumerate(palette):
+            #     x, y, z = color
+            #     # Do not add white to the palette since it is the same background in every pic.
+            #     if not (252 < x < 256 and 252 < y < 256 and 252 < z < 256):
+            #         palette_w_white.append(color)
+            #     else:
+            #         labels = np.delete(labels, np.where(labels == i))
 
-            _, counts = np.unique(labels, return_counts=True)
-            dominant = palette_w_white[np.argmax(counts)]
-            palettes.append(palette_w_white)
-            dominants.append(dominant)
+            # _, counts = np.unique(labels, return_counts=True)
+            # dominant = palette_w_white[np.argmax(counts)]
+            # palettes.append(palette_w_white)
+            # dominants.append(dominant)
             new_bboxes.append(bbox)
 
-        return palettes, dominants, new_bboxes, boxes, texts
+        return new_bboxes, boxes, texts
 
     def compose_paragraphs(self, text_bboxes, text_palettes):
 
@@ -116,7 +176,9 @@ class ProcessedDeStijl(Dataset):
             Return: Grouped indices of detected text elements.
         '''
 
-        num_text_boxes = len(text_palettes)
+        num_text_boxes = len(text_bboxes)
+        if num_text_boxes == 0:
+            return False
         composed_text_idxs = [[0]]
         for i in range(num_text_boxes-1):
             palette1 = text_palettes[i]
@@ -179,30 +241,41 @@ class ProcessedDeStijl(Dataset):
                 biggest_borders.append(bboxes[idxs[0]])
         return biggest_borders
 
+    def mini_kmeans(self, biggest_border, n_colors, image):
+        x, y = int(biggest_border[0][0]), int(biggest_border[0][1])
+        z, t = int(biggest_border[2][0]), int(biggest_border[2][1])
+        cropped_image = image[y:t, x:z]
+        pixels = np.float32(cropped_image.reshape(-1, 3))
+        _, labels, palette = cv2.kmeans(pixels, n_colors, None, self.criteria, 10, self.flags)
+        palette = np.asarray(palette, dtype=np.int64)
+
+        _, counts = np.unique(labels, return_counts=True)
+        color = palette[np.argmin(counts)]
+        return color
+
+
     def extract_text_directly(self, img_path, white_bg_texts):
-        n_colors = 3
+        n_colors = 2
 
         result = self.ocr.ocr(img_path, cls=True)[0]
 
         image = Image.open(img_path).convert('RGB')
         boxes = [line[0] for line in result]
-        texts = [line[1][0].replace(" ", "") for line in result]
-        white_bg_texts = [elem.replace(" ", "") for elem in white_bg_texts]
-        print("TEXTS")
-        print(texts)
-        print("WHITE BG TEXTS")
-        print(white_bg_texts)
+        texts = [line[1][0].replace(" ", "").lower() for line in result]
+        white_bg_texts = [elem.replace(" ", "").lower() for elem in white_bg_texts]
         image = cv2.imread(img_path)
         same_idxs = []
         new_boxes = []
         
+        composed_text_palettes = []
         for j, elem in enumerate(white_bg_texts):
             for i, text in enumerate(texts):
                 if similar(elem, text) > 0.85:
                     new_boxes.append(boxes[i])
-                if i+1 != len(texts):
+                    biggest_border = boxes[i]
+                    composed_text_palettes.append(self.mini_kmeans(biggest_border, n_colors, image))
+                elif i+1 != len(texts):
                     if similar(elem, text + texts[i+1]) > 0.85:
-                        print("similar??")
                         # merge boxes
                         bboxes = [boxes[i], boxes[i+1]]
                         smallest_x = 1000
@@ -223,9 +296,10 @@ class ProcessedDeStijl(Dataset):
                                 biggest_y =  bbox_biggest_y
 
                         biggest_border = [[smallest_x, smallest_y], [biggest_x, smallest_y], [biggest_x, biggest_y], [smallest_x, biggest_y]]
-                        new_boxes.append(biggest_border) 
+                        new_boxes.append(biggest_border)
+                        composed_text_palettes.append(self.mini_kmeans(biggest_border, n_colors, image))
 
-        return new_boxes
+        return new_boxes, composed_text_palettes
 
     def extract_decor_elements(self, decoration_path, preview_path):
         # Determine the number of dominant colors
@@ -352,7 +426,7 @@ class ProcessedDeStijl(Dataset):
 
     def process_dataset(self):
 
-        for idx in range(345, self.dataset_size):
+        for idx in range(348, self.dataset_size):
             print("CURRENTLY AT: ", idx)
             path_idx = "{:04d}".format(idx)
             preview = self.path_dict['preview'] + path_idx + '.png'
@@ -362,11 +436,12 @@ class ProcessedDeStijl(Dataset):
             text = self.path_dict['text'] + path_idx + '.png'
             theme = self.path_dict['theme'] + path_idx + '.png'
 
-            text_palettes, text_dominants, text_bboxes, white_bg_text_boxes, texts = self.extract_text_bbox(text, preview)
-            text_bboxes_from_design = self.extract_text_directly(preview, texts)
-            composed_text_idxs = self.compose_paragraphs(text_bboxes_from_design, text_palettes)
-            merged_bboxes = self.merge_bounding_boxes(composed_text_idxs, text_bboxes_from_design)
-
+            text_bboxes, white_bg_text_boxes, texts = self.extract_text_bbox(text, preview)
+            text_bboxes_from_design, composed_text_palettes = self.extract_text_directly(preview, texts)
+            composed_text_idxs = self.compose_paragraphs(text_bboxes_from_design, composed_text_palettes)
+            merged_bboxes = []
+            if composed_text_idxs != False:
+                merged_bboxes = self.merge_bounding_boxes(composed_text_idxs, text_bboxes_from_design)
             image_bboxes, image_palette = self.extract_image(preview, image)
             #decoration_hsv_xpalettes, decoration_bboxes = self.extract_decor_elements(decoration, preview)
             image_prev = cv2.imread(preview)
