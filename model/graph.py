@@ -13,13 +13,10 @@ class DesignGraph():
             Edge features: distance between elements
         '''
         self.pretrained_model = pretrained_model
-        self.embedding_list = {
-            'image':[], 
-            'background':[], 
-            'text':[]
-        }
+        self.embedding_dict = {}            
 
         for layer in layers:
+            self.embedding_dict[layer] = []
             for bbox in all_bboxes[layer]:
                 x, y = int(bbox[0][0]), int(bbox[0][1])
                 z, t = int(bbox[2][0]), int(bbox[2][1])
