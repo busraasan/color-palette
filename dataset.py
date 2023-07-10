@@ -30,6 +30,7 @@ class ProcessedDeStijl(Dataset):
             'theme': data_path + '/05_theme/'
         }
 
+        self.data_path = data_path
         self.dataset_size = len(next(os.walk(self.path_dict['preview']))[2])
         self.ocr = PaddleOCR(use_angle_cls=True, lang='en')
 
@@ -59,10 +60,9 @@ class ProcessedDeStijl(Dataset):
         }
 
         self.annotation_path_dict = {
-            'preview': self.data_path + '/xmls/' +'/00_preview/' + path_idx + '.xml',
-            'background': self.data_path + '/xmls/' + '/01_background/' + path_idx + '.xml',
-            'image': self.data_path + '/xmls/' + '/02_image/' + path_idx + '.xml',
-            'text': self.data_path + '/xmls/' + '/04_text/' + path_idx + '.xml',
+            'preview': self.data_path + '/xmls' +'/00_preview/' + path_idx + '.xml',
+            'image': self.data_path + '/xmls' + '/02_image/' + path_idx + '.xml',
+            'text': self.data_path + '/xmls' + '/04_text/' + path_idx + '.xml',
         }
 
         self.layers = ['image', 'background', 'text'] # Take this from config file later
@@ -78,13 +78,24 @@ class ProcessedDeStijl(Dataset):
             'text':[]
         }
         for i, layer in enumerate(self.layers):
-            img = np.array(Image.open(self.img_path_dict[layer]).convert('RGB'))
-            bboxes = VOC2bbox(self.annotation_path_dict[layer])
-            # [[smallest_x, smallest_y], [biggest_x, smallest_y], [biggest_x, biggest_y], [smallest_x, biggest_y]]
-            all_bboxes[layer] = bboxes
-            all_images[layer] = img
+            if layer == "background":
+                self.preview_img = cv2.imread(self.img_path_dict[layer])
+                img = self.img_path_dict[layer]
+                all_images[layer] = img
+                all_bboxes[layer] = [[[0, 0], [self.preview_img.shape[0], 0], [self.preview_img.shape[0], self.preview_img.shape[1]], [0, self.preview_img.shape[1]]]]
+            else:
+                if layer == 'text':
+                    img = self.img_path_dict['preview']
+                    filename, bboxes = VOC2bbox(self.annotation_path_dict[layer])
+                    all_bboxes[layer] = bboxes
+                    all_images[layer] = img
+                elif layer == 'image':
+                    img_path = self.img_path_dict['image']
+                    self.img_img = cv2.imread(img_path)
+                    all_bboxes[layer] = [[[0, 0], [self.img_img.shape[0], 0], [self.img_img.shape[0], self.img_img.shape[1]], [0, self.img_img.shape[1]]]]
+                    all_images[layer] = img_path
 
-        DesignGraph(self.pretrained_model, all_images, all_bboxes, self.layers)
+        DesignGraph(self.pretrained_model, all_images, all_bboxes, self.layers, self.img_path_dict['preview'])
         return DesignGraph
             
     ######### RUNTIME EXTRACTION ###########
@@ -469,7 +480,7 @@ class ProcessedDeStijl(Dataset):
 
     def process_dataset(self):
 
-        for idx in range(348, self.dataset_size):
+        for idx in range(388, self.dataset_size):
             print("CURRENTLY AT: ", idx)
             path_idx = "{:04d}".format(idx)
             preview = self.path_dict['preview'] + path_idx + '.png'
@@ -498,8 +509,12 @@ class ProcessedDeStijl(Dataset):
                 create_xml("../destijl_dataset/xmls/04_text", path_idx+".xml", merged_bboxes)
             create_xml("../destijl_dataset/xmls/02_image", path_idx+".xml",  image_bboxes)
 
+    def trial(self):
+        self.__getitem__(1)
+
 if __name__ == "__main__":
     dataset = ProcessedDeStijl(data_path='../destijl_dataset')
-    dataset.process_dataset()
+    #dataset.process_dataset()
+    dataset.trial()
 
 
