@@ -1,7 +1,7 @@
 import cv2
 import numpy as np
 from skimage import color, io
-
+import torch
 from collections import defaultdict
 import os
 import csv
@@ -11,6 +11,7 @@ import xml.etree.ElementTree as ET
 
 from PIL import Image, ImageChops
 from difflib import SequenceMatcher
+import torchvision.ops.boxes as bops
 
 def bgr2rgb(color):
     x, y, z = color
@@ -34,8 +35,29 @@ def CIELab_distance(color1, color2, color_space="RGB"):
 
     return np.sqrt((lab1[0] - lab2[0])**2 + (lab1[1] - lab2[0])**2 + (lab1[2] - lab2[0])**2)
 
-def VOC2bbox(bbox):
-    pass
+
+def VOC2bbox(xml_file: str):
+
+    tree = ET.parse(xml_file)
+    root = tree.getroot()
+
+    list_with_all_boxes = []
+
+    for boxes in root.iter('object'):
+
+        filename = root.find('filename').text
+
+        ymin, xmin, ymax, xmax = None, None, None, None
+
+        ymin = int(boxes.find("bndbox/ymin").text)
+        xmin = int(boxes.find("bndbox/xmin").text)
+        ymax = int(boxes.find("bndbox/ymax").text)
+        xmax = int(boxes.find("bndbox/xmax").text)
+
+        list_with_single_boxes = [[xmin, ymin], [xmax, ymin], [xmax, ymax], [xmin, ymax]]
+        list_with_all_boxes.append(list_with_single_boxes)
+
+    return filename, list_with_all_boxes
 
 def bbox2VOC(filename, layer_name, bbox):
     bbox_smallest_x, bbox_smallest_y = np.min(bbox, axis=0)
@@ -126,8 +148,43 @@ def NMS(boxes, overlapThresh = 0.98):
             indices = indices[indices != i]
     return boxes[indices].astype(int)
 
-def delete_same_bboxes(boxes):
-    pass
+def calculate_iou(box_1, box_2):
+    # coordinate format [x1, y1, x2, y2] for bbox
+    xmin1, ymin1 = np.min(box_1, axis=0)
+    xmax1, ymax1 = np.max(box_1, axis=0)
+    box1 = torch.tensor([[xmin1, ymin1, xmax1, ymax1]], dtype=torch.float)
+    xmin2, ymin2 = np.min(box_2, axis=0)
+    xmax2, ymax2 = np.max(box_2, axis=0)
+    box2 = torch.tensor([[xmin2, ymin2, xmax2, ymax2]], dtype=torch.float)
+    return bops.box_iou(box1, box2)
+
+def calculate_overlap(box_1, box_2):
+    # coordinate format [x1, y1, x2, y2] for bbox
+    xmin1, ymin1 = np.min(box_1, axis=0)
+    xmax1, ymax1 = np.max(box_1, axis=0)
+    w1 = xmax1 - xmin1
+    h1 = ymax1 - ymax1
+    box1 = torch.tensor([[xmin1, ymin1, xmax1, ymax1]], dtype=torch.float)
+    xmin2, ymin2 = np.min(box_2, axis=0)
+    xmax2, ymax2 = np.max(box_2, axis=0)
+    w2 = xmax2 - xmin2
+    h2 = ymax2 - ymax2
+    box2 = torch.tensor([[xmin2, ymin2, xmax2, ymax2]], dtype=torch.float)
+
+    dx = min(xmax1, xmax2) - max(xmin1, xmin2)
+    dy = min(ymax1, ymax2) - max(ymin1, ymin2)
+
+    if (dx>=0) and (dy>=0):
+        overlaping_area = dx*dy
+    else:
+        overlaping_area = 0
+
+    if overlaping_area > w1*h1*11/10:
+        return overlaping_area/(w1*h1)
+    elif overlaping_area > w2*h2*11/10:
+        return overlaping_area/(w2*h2)
+
+    return overlaping_area
 
 def delete_too_small_bboxes(boxes):
     x1 = boxes[:, 0]  # x coordinate of the top-left corner
