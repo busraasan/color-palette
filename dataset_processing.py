@@ -36,6 +36,8 @@ class ProcessedDeStijl(Dataset):
 
         self.criteria = (cv2.TERM_CRITERIA_EPS + cv2.TERM_CRITERIA_MAX_ITER, 200, .1)
         self.flags = cv2.KMEANS_RANDOM_CENTERS
+
+        self.layers = ['image', 'background', 'text'] # Take this from config file later
         
         self.pretrained_model = resnet50(weights=ResNet50_Weights.IMAGENET1K_V1)
 
@@ -46,104 +48,10 @@ class ProcessedDeStijl(Dataset):
         '''
             Return a graph object based on the information
         '''
-        path_idx = "{:04d}".format(idx)
-
-        self.img_path_dict = {
-            'preview': self.data_path + '/00_preview/' + path_idx + '.png',
-            'background': self.data_path + '/01_background/' + path_idx + '.png',
-            'image': self.data_path + '/02_image/' + path_idx + '.png',
-            'text': self.data_path + '/04_text/' + path_idx + '.png',
-        }
-
-        self.annotation_path_dict = {
-            'preview': self.data_path + '/xmls' +'/00_preview/' + path_idx + '.xml',
-            'image': self.data_path + '/xmls' + '/02_image/' + path_idx + '.xml',
-            'text': self.data_path + '/xmls' + '/04_text/' + path_idx + '.xml',
-        }
-
-        self.layers = ['image', 'background', 'text'] # Take this from config file later
-       
-        all_bboxes = {
-            'image':[], 
-            'background':[], 
-            'text':[]
-        }
-        all_images = {
-            'image':[], 
-            'background':[], 
-            'text':[]
-        }
-        for i, layer in enumerate(self.layers):
-            if layer == "background":
-                self.preview_img = cv2.imread(self.img_path_dict[layer])
-                img = self.img_path_dict[layer]
-                all_images[layer] = img
-                all_bboxes[layer] = [[[0, 0], [self.preview_img.shape[0], 0], [self.preview_img.shape[0], self.preview_img.shape[1]], [0, self.preview_img.shape[1]]]]
-            else:
-                if layer == 'text':
-                    img = self.img_path_dict['preview']
-                    filename, bboxes = VOC2bbox(self.annotation_path_dict[layer])
-                    all_bboxes[layer] = bboxes
-                    all_images[layer] = img
-                elif layer == 'image':
-                    img_path = self.img_path_dict['image']
-                    self.img_img = cv2.imread(img_path)
-                    all_bboxes[layer] = [[[0, 0], [self.img_img.shape[0], 0], [self.img_img.shape[0], self.img_img.shape[1]], [0, self.img_img.shape[1]]]]
-                    all_images[layer] = img_path
-
-        DesignGraph(self.pretrained_model, all_images, all_bboxes, self.layers, self.img_path_dict['preview'])
-        return DesignGraph
+        pass
             
     ######### RUNTIME EXTRACTION ###########
-    def extract_text_color_from_design(self, preview_path, text_bboxes):
-        image = Image.open(preview_path).convert('RGB')
-        n_colors = 2
-        text_colors = []
-        for bbox in text_bboxes:
-            # Crop the text area
-            x, y = int(bbox[0][0]), int(bbox[0][1])
-            z, t = int(bbox[2][0]), int(bbox[2][1])
-            cropped_image = image[y:t, x:z]
 
-            # Apply KMeans to the text area
-            pixels = np.float32(cropped_image.reshape(-1, 3))
-            _, labels, palette = cv2.kmeans(pixels, n_colors, None, self.criteria, 10, self.flags)
-            palette = np.asarray(palette, dtype=np.int64)
-            palette_w_white = []
-
-            for i, color in enumerate(palette):
-                x, y, z = color
-                palette_w_white.append(color)
-
-            _, counts = np.unique(labels, return_counts=True)
-            text_color = palette_w_white[np.argmin(counts)]
-            background_color = palette_w_white[np.argmax(counts)]
-            text_colors.append(text_color)
-        return text_colors
-
-    def extract_image_color_from_design(self, preview_path, image_bboxes):
-        image = Image.open(preview_path).convert('RGB')
-        n_colors = 2
-        img_colors = []
-        for bbox in image_bboxes:
-            # Crop the text area
-            x, y = int(bbox[0][0]), int(bbox[0][1])
-            z, t = int(bbox[2][0]), int(bbox[2][1])
-            cropped_image = image[y:t, x:z]
-
-            # Apply KMeans to the text area
-            pixels = np.float32(cropped_image.reshape(-1, 3))
-            _, labels, palette = cv2.kmeans(pixels, n_colors, None, self.criteria, 10, self.flags)
-            palette = np.asarray(palette, dtype=np.int64)
-            palette_w_white = []
-
-            for i, color in enumerate(palette):
-                x, y, z = color
-                palette_w_white.append(color)
-
-            img_colors.append(palette_w_white)
-
-        return img_colors
 
     ######### PROCESSING AND ANNOTATING THE DATASET ###########
 
@@ -474,17 +382,15 @@ class ProcessedDeStijl(Dataset):
 
         return [bbox], palette
 
-    def process_dataset(self):
+    def annotate_dataset(self):
 
         for idx in range(388, self.dataset_size):
             print("CURRENTLY AT: ", idx)
             path_idx = "{:04d}".format(idx)
             preview = self.path_dict['preview'] + path_idx + '.png'
-            background = self.path_dict['background'] + path_idx + '.png'
             decoration = self.path_dict['decoration'] + path_idx + '.png'
             image = self.path_dict['image'] + path_idx + '.png'
             text = self.path_dict['text'] + path_idx + '.png'
-            theme = self.path_dict['theme'] + path_idx + '.png'
 
             text_bboxes, white_bg_text_boxes, texts = self.extract_text_bbox(text, preview)
             text_bboxes_from_design, composed_text_palettes = self.extract_text_directly(preview, texts)
@@ -493,9 +399,10 @@ class ProcessedDeStijl(Dataset):
             if composed_text_idxs != False:
                 merged_bboxes = self.merge_bounding_boxes(composed_text_idxs, text_bboxes_from_design)
             image_bboxes, image_palette = self.extract_image(preview, image)
+
             #decoration_hsv_xpalettes, decoration_bboxes = self.extract_decor_elements(decoration, preview)
-            image_prev = cv2.imread(preview)
-            image_text = cv2.imread(text)
+            # image_prev = cv2.imread(preview)
+            # image_text = cv2.imread(text)
             #mapped_decoration_bboxes = self.map_decoration_coordinates(text_bboxes_from_design[0], white_bg_text_boxes[0], decoration_bboxes, (image_prev.shape[0], image_prev.shape[1]), (image_text.shape[0], image_text.shape[1]))
 
             #create_xml("../destijl_dataset/xmls/03_decoration", path_idx+".xml", mapped_decoration_bboxes)
@@ -504,6 +411,56 @@ class ProcessedDeStijl(Dataset):
             else:
                 create_xml("../destijl_dataset/xmls/04_text", path_idx+".xml", merged_bboxes)
             create_xml("../destijl_dataset/xmls/02_image", path_idx+".xml",  image_bboxes)
+
+    def process_dataset(self, idx):
+        '''
+            Process each node. Construct graph features and save the features as pt files.
+        '''
+        path_idx = "{:04d}".format(idx)
+
+        img_path_dict = {
+            'preview': self.data_path + '/00_preview/' + path_idx + '.png',
+            'background': self.data_path + '/01_background/' + path_idx + '.png',
+            'image': self.data_path + '/02_image/' + path_idx + '.png',
+            'text': self.data_path + '/04_text/' + path_idx + '.png',
+        }
+
+        annotation_path_dict = {
+            'preview': self.data_path + '/xmls' +'/00_preview/' + path_idx + '.xml',
+            'image': self.data_path + '/xmls' + '/02_image/' + path_idx + '.xml',
+            'text': self.data_path + '/xmls' + '/04_text/' + path_idx + '.xml',
+        }
+       
+        all_bboxes = {
+            'image':[], 
+            'background':[], 
+            'text':[]
+        }
+        all_images = {
+            'image':[], 
+            'background':[], 
+            'text':[]
+        }
+
+        for i, layer in enumerate(self.layers):
+            if layer == "background":
+                self.preview_img = cv2.imread(img_path_dict[layer])
+                img = self.img_path_dict[layer]
+                all_images[layer] = img
+                all_bboxes[layer] = [[[0, 0], [self.preview_img.shape[0], 0], [self.preview_img.shape[0], self.preview_img.shape[1]], [0, self.preview_img.shape[1]]]]
+            else:
+                if layer == 'text':
+                    img = self.img_path_dict['preview']
+                    filename, bboxes = VOC2bbox(annotation_path_dict[layer])
+                    all_bboxes[layer] = bboxes
+                    all_images[layer] = img
+                elif layer == 'image':
+                    img_path = self.img_path_dict['image']
+                    self.img_img = cv2.imread(img_path)
+                    all_bboxes[layer] = [[[0, 0], [self.img_img.shape[0], 0], [self.img_img.shape[0], self.img_img.shape[1]], [0, self.img_img.shape[1]]]]
+                    all_images[layer] = img_path
+
+        DesignGraph(self.pretrained_model, all_images, all_bboxes, self.layers, img_path_dict['preview'])
 
     def trial(self):
         self.get(1)
