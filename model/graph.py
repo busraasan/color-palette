@@ -1,6 +1,8 @@
 
 import torch
 import torch.nn as nn
+from torch_geometric.data import Data
+
 import numpy as np
 from utils import *
 from PIL import Image
@@ -18,12 +20,18 @@ class DesignGraph():
         self.layers = layers   
         self.all_bboxes = all_bboxes
         self.all_images = all_images
+        self.preview_path = preview_path
 
         self.num_nodes = 0
         self.num_nodes_per_class = {
             'image':0,
             'background':0,
             'text':0
+        }
+        self.layer_classes = {
+            'image':0,
+            'background':1,
+            'text':2
         }
         self.node_information = []
         self.preview_img = cv2.imread(preview_path)
@@ -83,7 +91,79 @@ class DesignGraph():
         for node in self.node_information:
             self.calculate_distances(node[2], node[0])
 
+    def extract_text_color_from_design(self, preview_path, bbox):
+        image = Image.open(preview_path).convert('RGB')
+        n_colors = 2
+        
+        # Crop the text area
+        x, y = int(bbox[0][0]), int(bbox[0][1])
+        z, t = int(bbox[2][0]), int(bbox[2][1])
+        cropped_image = image[y:t, x:z]
+
+        # Apply KMeans to the text area
+        pixels = np.float32(cropped_image.reshape(-1, 3))
+        _, labels, palette = cv2.kmeans(pixels, n_colors, None, self.criteria, 10, self.flags)
+        palette = np.asarray(palette, dtype=np.int64)
+        palette_w_white = []
+
+        for i, color in enumerate(palette):
+            x, y, z = color
+            palette_w_white.append(color)
+
+        _, counts = np.unique(labels, return_counts=True)
+        text_color = palette_w_white[np.argmin(counts)]
+        background_color = palette_w_white[np.argmax(counts)]
+        return text_color
+
+    def extract_image_color_from_design(self, preview_path, bbox):
+        image = Image.open(preview_path).convert('RGB')
+        n_colors = 2
+        img_colors = []
+        # Crop the text area
+        x, y = int(bbox[0][0]), int(bbox[0][1])
+        z, t = int(bbox[2][0]), int(bbox[2][1])
+        cropped_image = image[y:t, x:z]
+
+        # Apply KMeans to the text area
+        pixels = np.float32(cropped_image.reshape(-1, 3))
+        _, labels, palette = cv2.kmeans(pixels, n_colors, None, self.criteria, 10, self.flags)
+        palette = np.asarray(palette, dtype=np.int64)
+        palette_w_white = []
+
+        for i, color in enumerate(palette):
+            x, y, z = color
+            palette_w_white.append(color)
+
+        return palette_w_white
+
     def construct_graph(self):
-        pass
+        '''
+            data.x: Node feature matrix with shape [num_nodes, num_node_features]
+            data.edge_index: Graph connectivity in COO format with shape [2, num_edges] and type torch.long
+            data.edge_attr: Edge feature matrix with shape [num_edges, num_edge_features]
+            data.y: Target to train against (may have arbitrary shape), e.g., node-level targets of shape [num_nodes, *] or graph-level targets of shape [1, *]
+            data.pos: Node position matrix with shape [num_nodes, num_dimensions]
+        '''
+
+        node_features = []
+        for node in self.node_information:
+            num_node, layer, bbox, embedding, relative_size = node
+            if layer == 'image':
+                color_palette = self.extract_image_color_from_design(self.preview_path, bbox)
+            elif layer == 'text':
+                color_palette = [self.extract_text_color_from_design(self.preview_path, bbox)]
+            elif layer == 'background':
+                color_palette = self.extract_image_color_from_design(self.all_images[layer], bbox)
+            
+            feature_vector = torch.cat([num_node], [self.layer_classes[layer]], torch.flatten(embedding), [relative_size], torch.flatten(color_palette))
+            node_features.append(feature_vector)
+
+        data = Data(x=node_features, 
+                    edge_index=edge_index,
+                    edge_attr=edge_feats,
+                    y=torch.flatten(color_palette),
+                    ) 
+
+
 
 
