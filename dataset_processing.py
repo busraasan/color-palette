@@ -445,25 +445,26 @@ class ProcessedDeStijl(Dataset):
         for i, layer in enumerate(self.layers):
             if layer == "background":
                 self.preview_img = cv2.imread(img_path_dict[layer])
-                img = self.img_path_dict[layer]
+                img = img_path_dict[layer]
                 all_images[layer] = img
                 all_bboxes[layer] = [[[0, 0], [self.preview_img.shape[0], 0], [self.preview_img.shape[0], self.preview_img.shape[1]], [0, self.preview_img.shape[1]]]]
             else:
                 if layer == 'text':
-                    img = self.img_path_dict['preview']
+                    img = img_path_dict['preview']
                     filename, bboxes = VOC2bbox(annotation_path_dict[layer])
                     all_bboxes[layer] = bboxes
                     all_images[layer] = img
                 elif layer == 'image':
-                    img_path = self.img_path_dict['image']
+                    img_path = img_path_dict['image']
                     self.img_img = cv2.imread(img_path)
                     all_bboxes[layer] = [[[0, 0], [self.img_img.shape[0], 0], [self.img_img.shape[0], self.img_img.shape[1]], [0, self.img_img.shape[1]]]]
                     all_images[layer] = img_path
 
-        DesignGraph(self.pretrained_model, all_images, all_bboxes, self.layers, img_path_dict['preview'])
+        DesignGraph(self.pretrained_model, all_images, all_bboxes, self.layers, img_path_dict['preview'], idx)
 
     def trial(self):
-        self.get(1)
+        for i in range(16, 347):
+            self.process_dataset(i)
 
 if __name__ == "__main__":
     dataset = ProcessedDeStijl(data_path='../destijl_dataset')

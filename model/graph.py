@@ -10,7 +10,7 @@ import math
 import cv2
 
 class DesignGraph():
-    def __init__(self, pretrained_model, all_images, all_bboxes, layers, preview_path):
+    def __init__(self, pretrained_model, all_images, all_bboxes, layers, preview_path, idx):
         '''
             Node types: Image, Background, Text
             Node features: embedding, color palette, relative size, class
@@ -21,6 +21,10 @@ class DesignGraph():
         self.all_bboxes = all_bboxes
         self.all_images = all_images
         self.preview_path = preview_path
+        self.idx = idx
+
+        self.criteria = (cv2.TERM_CRITERIA_EPS + cv2.TERM_CRITERIA_MAX_ITER, 200, .1)
+        self.flags = cv2.KMEANS_RANDOM_CENTERS
 
         self.num_nodes = 0
         self.num_nodes_per_class = {
@@ -45,7 +49,10 @@ class DesignGraph():
                 self.num_nodes_per_class[layer] = len(self.all_bboxes[layer])
         
         self.distance_matrix = np.zeros((self.num_nodes, self.num_nodes))
+        self.COO_matrix = []
+        self.edge_features = []
         self.construct_features()
+        self.construct_graph()
 
     def calculate_distances(self, bbox, num_node):
         '''
@@ -84,15 +91,25 @@ class DesignGraph():
                 img = cv2.imread(self.all_images[layer])
                 cropped_image = torch.unsqueeze(torch.Tensor(img[y:t, x:z]).permute(2,0,1), 0)
                 embedding = self.pretrained_model(cropped_image)
-                relative_size = t*z / self.preview_img[0]*self.preview_img[1]
+                relative_size = t*z / self.preview_img.shape[0]*self.preview_img.shape[1]
                 self.node_information.append([num_node, layer, bbox, embedding, relative_size])
                 num_node+=1
 
         for node in self.node_information:
             self.calculate_distances(node[2], node[0])
 
+        # Construct COO format
+        rows = self.distance_matrix.shape[0]
+        cols = self.distance_matrix.shape[1]
+        print(rows+cols)
+        for row in range(rows):
+            for col in range(cols):
+                if row != col:
+                    self.COO_matrix.append([row,col])
+                    self.edge_features.append(self.distance_matrix[row, col])
+
     def extract_text_color_from_design(self, preview_path, bbox):
-        image = Image.open(preview_path).convert('RGB')
+        image = cv2.imread(preview_path)
         n_colors = 2
         
         # Crop the text area
@@ -116,7 +133,7 @@ class DesignGraph():
         return text_color
 
     def extract_image_color_from_design(self, preview_path, bbox):
-        image = Image.open(preview_path).convert('RGB')
+        image = cv2.imread(preview_path)
         n_colors = 2
         img_colors = []
         # Crop the text area
@@ -146,6 +163,7 @@ class DesignGraph():
         '''
 
         node_features = []
+        y = []
         for node in self.node_information:
             num_node, layer, bbox, embedding, relative_size = node
             if layer == 'image':
@@ -155,15 +173,19 @@ class DesignGraph():
             elif layer == 'background':
                 color_palette = self.extract_image_color_from_design(self.all_images[layer], bbox)
             
-            feature_vector = torch.cat([num_node], [self.layer_classes[layer]], torch.flatten(embedding), [relative_size], torch.flatten(color_palette))
+            colors = torch.flatten(torch.Tensor(color_palette))
+            feature_vector = torch.cat((torch.Tensor([self.layer_classes[layer]]), torch.flatten(embedding), torch.Tensor([relative_size]), colors))
             node_features.append(feature_vector)
+            y.append(colors)
 
+        path_idx = "{:04d}".format(self.idx)
         data = Data(x=node_features, 
-                    edge_index=edge_index,
-                    edge_attr=edge_feats,
-                    y=torch.flatten(color_palette),
-                    ) 
+                    edge_index=self.COO_matrix,
+                    edge_attr=self.edge_features,
+                    y=y,
+                    )
 
+        torch.save(data, os.path.join('../destijl_dataset/graph_dataset/', f'data_{path_idx}.pt'))
 
 
 
