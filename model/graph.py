@@ -134,8 +134,7 @@ class DesignGraph():
 
     def extract_image_color_from_design(self, preview_path, bbox):
         image = cv2.imread(preview_path)
-        n_colors = 2
-        img_colors = []
+        n_colors = 3
         # Crop the text area
         x, y = int(bbox[0][0]), int(bbox[0][1])
         z, t = int(bbox[2][0]), int(bbox[2][1])
@@ -148,18 +147,23 @@ class DesignGraph():
         palette_w_white = []
 
         for i, color in enumerate(palette):
+            # Do not add white to the palette
+            if not (252 < x < 256 and 252 < y < 256 and 252 < z < 256):
+                palette_w_white.append(color)
+            else:
+                labels = np.delete(labels, np.where(labels == i))
             x, y, z = color
             palette_w_white.append(color)
 
-        return palette_w_white
+        _, counts = np.unique(labels, return_counts=True)
+        text_color = palette_w_white[np.argmin(counts)]
+        background_color = palette_w_white[np.argmax(counts)] #dominant color
+
+        return background_color
 
     def construct_graph(self):
         '''
-            data.x: Node feature matrix with shape [num_nodes, num_node_features]
-            data.edge_index: Graph connectivity in COO format with shape [2, num_edges] and type torch.long
-            data.edge_attr: Edge feature matrix with shape [num_edges, num_edge_features]
-            data.y: Target to train against (may have arbitrary shape), e.g., node-level targets of shape [num_nodes, *] or graph-level targets of shape [1, *]
-            data.pos: Node position matrix with shape [num_nodes, num_dimensions]
+            For now, only one color from the image is used
         '''
 
         node_features = []
@@ -167,11 +171,11 @@ class DesignGraph():
         for node in self.node_information:
             num_node, layer, bbox, embedding, relative_size = node
             if layer == 'image':
-                color_palette = self.extract_image_color_from_design(self.preview_path, bbox)
+                color_palette = [self.extract_image_color_from_design(self.preview_path, bbox)]
             elif layer == 'text':
                 color_palette = [self.extract_text_color_from_design(self.preview_path, bbox)]
             elif layer == 'background':
-                color_palette = self.extract_image_color_from_design(self.all_images[layer], bbox)
+                color_palette = [self.extract_image_color_from_design(self.all_images[layer], bbox)]
             
             colors = torch.flatten(torch.Tensor(color_palette))
             feature_vector = torch.cat((torch.Tensor([self.layer_classes[layer]]), torch.flatten(embedding), torch.Tensor([relative_size]), colors))
