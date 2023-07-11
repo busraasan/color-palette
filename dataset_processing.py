@@ -463,7 +463,7 @@ class ProcessedDeStijl(Dataset):
         DesignGraph(self.pretrained_model, all_images, all_bboxes, self.layers, img_path_dict['preview'], idx)
 
     def trial(self):
-        for i in range(16, 347):
+        for i in range(330, 347):
             self.process_dataset(i)
 
 if __name__ == "__main__":
