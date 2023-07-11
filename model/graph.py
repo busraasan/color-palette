@@ -9,6 +9,14 @@ from PIL import Image
 import math
 import cv2
 
+from torchvision import transforms
+
+preprocess = transforms.Compose([
+    transforms.Resize(256),
+    transforms.CenterCrop(224),
+    transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
+])
+
 class DesignGraph():
     def __init__(self, pretrained_model, all_images, all_bboxes, layers, preview_path, idx):
         '''
@@ -41,6 +49,14 @@ class DesignGraph():
         self.preview_img = cv2.imread(preview_path)
 
         for layer in layers:
+            for bbox in self.all_bboxes[layer]:
+                bbox_smallest_x, bbox_smallest_y = np.min(bbox, axis=0)
+                bbox_biggest_x, bbox_biggest_y = np.max(bbox, axis=0)
+                width = bbox_biggest_x - bbox_smallest_x
+                height = bbox_biggest_y - bbox_smallest_y
+                if width < 2 or height < 2:
+                    self.all_bboxes[layer].remove(bbox)
+            
             if layer == "background":
                 self.num_nodes += 1
                 self.num_nodes_per_class[layer] = 1
@@ -89,8 +105,13 @@ class DesignGraph():
                 x, y = int(bbox[0][0]), int(bbox[0][1])
                 z, t = int(bbox[2][0]), int(bbox[2][1])
                 img = cv2.imread(self.all_images[layer])
-                cropped_image = torch.unsqueeze(torch.Tensor(img[y:t, x:z]).permute(2,0,1), 0)
+                convert_to_tensor = torch.from_numpy(img[y:t, x:z]).permute(2,0,1).float()
+                processed_img = preprocess(convert_to_tensor)
+                cropped_image = torch.unsqueeze((processed_img), 0)
                 embedding = self.pretrained_model(cropped_image)
+
+                #cropped_image = torch.unsqueeze(torch.Tensor(img[y:t, x:z]).permute(2,0,1), 0)
+                #embedding = self.pretrained_model(cropped_image)
                 relative_size = t*z / self.preview_img.shape[0]*self.preview_img.shape[1]
                 self.node_information.append([num_node, layer, bbox, embedding, relative_size])
                 num_node+=1
@@ -101,7 +122,6 @@ class DesignGraph():
         # Construct COO format
         rows = self.distance_matrix.shape[0]
         cols = self.distance_matrix.shape[1]
-        print(rows+cols)
         for row in range(rows):
             for col in range(cols):
                 if row != col:
@@ -132,9 +152,12 @@ class DesignGraph():
         background_color = palette_w_white[np.argmax(counts)]
         return text_color
 
-    def extract_image_color_from_design(self, preview_path, bbox):
+    def extract_image_color_from_design(self, preview_path, bbox, layer):
         image = cv2.imread(preview_path)
-        n_colors = 3
+        if layer == "background":
+            n_colors = 1
+        else:
+            n_colors = 3
         # Crop the text area
         x, y = int(bbox[0][0]), int(bbox[0][1])
         z, t = int(bbox[2][0]), int(bbox[2][1])
@@ -146,20 +169,22 @@ class DesignGraph():
         palette = np.asarray(palette, dtype=np.int64)
         palette_w_white = []
 
-        for i, color in enumerate(palette):
-            # Do not add white to the palette
-            if not (252 < x < 256 and 252 < y < 256 and 252 < z < 256):
+        if layer != "background":
+            for i, color in enumerate(palette):
+                # Do not add white to the palette
+                if not (252 < x < 256 and 252 < y < 256 and 252 < z < 256):
+                    palette_w_white.append(color)
+                else:
+                    labels = np.delete(labels, np.where(labels == i))
+                x, y, z = color
                 palette_w_white.append(color)
-            else:
-                labels = np.delete(labels, np.where(labels == i))
-            x, y, z = color
-            palette_w_white.append(color)
 
-        _, counts = np.unique(labels, return_counts=True)
-        text_color = palette_w_white[np.argmin(counts)]
-        background_color = palette_w_white[np.argmax(counts)] #dominant color
-
-        return background_color
+            _, counts = np.unique(labels, return_counts=True)
+            text_color = palette_w_white[np.argmin(counts)]
+            background_color = palette_w_white[np.argmax(counts)] #dominant color
+            return background_color
+        else:
+            return palette
 
     def construct_graph(self):
         '''
@@ -168,14 +193,14 @@ class DesignGraph():
 
         node_features = []
         y = []
-        for node in self.node_information:
+        for i, node in enumerate(self.node_information):
             num_node, layer, bbox, embedding, relative_size = node
             if layer == 'image':
-                color_palette = [self.extract_image_color_from_design(self.preview_path, bbox)]
+                color_palette = [self.extract_image_color_from_design(self.preview_path, bbox, layer)]
             elif layer == 'text':
                 color_palette = [self.extract_text_color_from_design(self.preview_path, bbox)]
             elif layer == 'background':
-                color_palette = [self.extract_image_color_from_design(self.all_images[layer], bbox)]
+                color_palette = [self.extract_image_color_from_design(self.all_images[layer], bbox, layer)]
             
             colors = torch.flatten(torch.Tensor(color_palette))
             feature_vector = torch.cat((torch.Tensor([self.layer_classes[layer]]), torch.flatten(embedding), torch.Tensor([relative_size]), colors))
@@ -189,7 +214,7 @@ class DesignGraph():
                     y=y,
                     )
 
-        torch.save(data, os.path.join('../destijl_dataset/graph_dataset/', f'data_{path_idx}.pt'))
+        torch.save(data, os.path.join('../destijl_dataset/processed/', f'data_{path_idx}.pt'))
 
 
 
