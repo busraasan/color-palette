@@ -202,17 +202,19 @@ class DesignGraph():
             elif layer == 'background':
                 color_palette = [self.extract_image_color_from_design(self.all_images[layer], bbox, layer)]
             
-            colors = torch.flatten(torch.Tensor(color_palette))
-            feature_vector = torch.cat((torch.Tensor([self.layer_classes[layer]]), torch.flatten(embedding), torch.Tensor([relative_size]), colors))
+            colors = np.asarray(color_palette).flatten()
+            feature_vector = np.concatenate((np.asarray([self.layer_classes[layer]]), embedding.detach().numpy().flatten(), np.asarray([relative_size]), colors))
             node_features.append(feature_vector)
             y.append(colors)
 
         path_idx = "{:04d}".format(self.idx)
-        data = Data(x=node_features, 
-                    edge_index=self.COO_matrix,
-                    edge_attr=self.edge_features,
-                    y=y,
+        data = Data(x=torch.from_numpy(np.asarray(node_features)).type(torch.float), 
+                    edge_index=torch.Tensor(self.COO_matrix).permute(1,0).type(torch.int32),
+                    edge_attr=torch.Tensor(self.edge_features),
+                    y=torch.from_numpy(np.asarray(y)),
                     )
+
+        print(data)
 
         torch.save(data, os.path.join('../destijl_dataset/processed/', f'data_{path_idx}.pt'))
 

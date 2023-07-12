@@ -33,7 +33,7 @@ def CIELab_distance(color1, color2, color_space="RGB"):
     else:
         assert "Undefined input color space!"
 
-    return np.sqrt((lab1[0] - lab2[0])**2 + (lab1[1] - lab2[0])**2 + (lab1[2] - lab2[0])**2)
+    return np.sqrt(np.sum((lab1[0] - lab2[0])**2 + (lab1[1] - lab2[0])**2 + (lab1[2] - lab2[0])**2))
 
 
 def VOC2bbox(xml_file: str):
@@ -49,13 +49,16 @@ def VOC2bbox(xml_file: str):
 
         ymin, xmin, ymax, xmax = None, None, None, None
 
-        ymin = int(boxes.find("bndbox/ymin").text)
-        xmin = int(boxes.find("bndbox/xmin").text)
-        ymax = int(boxes.find("bndbox/ymax").text)
-        xmax = int(boxes.find("bndbox/xmax").text)
+        ymin = int(float(boxes.find("bndbox/ymin").text))
+        xmin = int(float(boxes.find("bndbox/xmin").text))
+        ymax = int(float(boxes.find("bndbox/ymax").text))
+        xmax = int(float(boxes.find("bndbox/xmax").text))
 
-        list_with_single_boxes = [[xmin, ymin], [xmax, ymin], [xmax, ymax], [xmin, ymax]]
-        list_with_all_boxes.append(list_with_single_boxes)
+        if(xmax-xmin) == 0 or (ymax-ymin) == 0:
+            continue
+        else:
+            list_with_single_boxes = [[xmin, ymin], [xmax, ymin], [xmax, ymax], [xmin, ymax]]
+            list_with_all_boxes.append(list_with_single_boxes)
 
     return filename, list_with_all_boxes
 
@@ -121,32 +124,6 @@ def trim_image(img_path, layer_type):
         im = im.save("../destijl_dataset/"+layer_type+"_cropped/"+x[-1])
 
     return "../destijl_dataset/"+layer_type+"_cropped/"+x[-1]
-
-def NMS(boxes, overlapThresh = 0.98):
-    #return an empty list, if no boxes given
-    if len(boxes) == 0:
-        return []
-    x1 = boxes[:, 0]  # x coordinate of the top-left corner
-    y1 = boxes[:, 1]  # y coordinate of the top-left corner
-    x2 = boxes[:, 2]  # x coordinate of the bottom-right corner
-    y2 = boxes[:, 3]  # y coordinate of the bottom-right corner
-    # compute the area of the bounding boxes and sort the bounding
-    # boxes by the bottom-right y-coordinate of the bounding box
-    areas = (x2 - x1 + 1) * (y2 - y1 + 1) # We have a least a box of one pixel, therefore the +1
-    indices = np.arange(len(x1))
-    for i,box in enumerate(boxes):
-        temp_indices = indices[indices!=i]
-        xx1 = np.maximum(box[0], boxes[temp_indices,0])
-        yy1 = np.maximum(box[1], boxes[temp_indices,1])
-        xx2 = np.minimum(box[2], boxes[temp_indices,2])
-        yy2 = np.minimum(box[3], boxes[temp_indices,3])
-        w = np.maximum(0, xx2 - xx1 + 1)
-        h = np.maximum(0, yy2 - yy1 + 1)
-        # compute the ratio of overlap
-        overlap = (w * h) / areas[temp_indices]
-        if np.any(overlap) > overlapThresh:
-            indices = indices[indices != i]
-    return boxes[indices].astype(int)
 
 def calculate_iou(box_1, box_2):
     # coordinate format [x1, y1, x2, y2] for bbox

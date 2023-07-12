@@ -20,6 +20,8 @@ class GraphDestijlDataset(Dataset):
         self.sample_filenames = os.listdir(root+'processed/')
         self.processed_data_dir = root + 'processed/'
 
+        self.sample_filenames = ["data_{:04d}.pt".format(idx) for idx in range(5)]
+
         self.train_filenames, self.test_filenames = train_test_split(self.sample_filenames, 
                                                             test_size=0.30, 
                                                             random_state=42)
@@ -51,9 +53,9 @@ class GraphDestijlDataset(Dataset):
             Mask the color of one node. The color is the last 3 dimension of the feature vector.
             Put mask on a random node's color information.
         '''
-        n_nodes = len(data.x)
+        n_nodes = data.num_nodes
         node_to_mask = random.randint(0, n_nodes-1)
-        feature_vector = torch.stack(data.x)
+        feature_vector = data.x
         color_to_hide = feature_vector[node_to_mask, -3:]
         feature_vector[node_to_mask, -3:] = torch.Tensor([0.0, 0.0, 0.0])
         new_data = data.clone()
@@ -69,11 +71,18 @@ class GraphDestijlDataset(Dataset):
     def get(self, idx):
         """ - Equivalent to __getitem__ in pytorch
         """
+        # if self.test:
+        #     data = torch.load('./destijl_dataset/processed/data_0000.pt')
+        # else:
+        #     data = torch.load('../destijl_dataset/processed/data_0000.pt')
+        #     new_data, target_color, node_to_mask = self.test_train_mask(data)
+
         if self.test:
             data = torch.load(self.processed_data_dir+self.test_filenames[idx])
+            new_data, target_color, node_to_mask = self.test_train_mask(data)
         else:
             data = torch.load(self.processed_data_dir+self.train_filenames[idx])
-            target_color, node_to_mask, new_data = self.test_train_mask(data)
+            new_data, target_color, node_to_mask = self.test_train_mask(data)
         return new_data, target_color, node_to_mask
 
 if __name__ == '__main__':
