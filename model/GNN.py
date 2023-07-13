@@ -30,12 +30,12 @@ class ColorGNNSmall(nn.Module):
         self.color_picker = Linear(16, 3)
         self.sigmoid = nn.Sigmoid()
 
-    def forward(self, x, edge_index):
-        h = self.conv1(x, edge_index)
+    def forward(self, x, edge_index, edge_attr):
+        h = self.conv1(x, edge_index, edge_attr)
         h = self.activation1(h)
-        h = self.conv2(h, edge_index)
+        h = self.conv2(h, edge_index, edge_attr)
         h = self.activation2(h)
-        h = self.conv3(h, edge_index)
+        h = self.conv3(h, edge_index, edge_attr)
         h = self.activation3(h)  # Final GNN embedding space.
         
         out = self.color_picker(h)
@@ -55,14 +55,13 @@ class ColorGNN(nn.Module):
         self.color_picker = Linear(64, 3)
         self.sigmoid = nn.Sigmoid()
 
-    def forward(self, x, edge_index):
-        h = self.conv1(x, edge_index)
+    def forward(self, x, edge_index, edge_attr):
+        h = self.conv1(x, edge_index, edge_attr)
         h = self.activation1(h)
-        h = self.conv2(h, edge_index)
+        h = self.conv2(h, edge_index, edge_attr)
         h = self.activation2(h)
-        h = self.conv3(h, edge_index)
+        h = self.conv3(h, edge_index, edge_attr)
         h = self.activation3(h)  # Final GNN embedding space.
-        
         out = self.color_picker(h)
 
         return out
@@ -85,16 +84,16 @@ class ColorGNNBigger(nn.Module):
 
         self.sigmoid = nn.Sigmoid()
 
-    def forward(self, x, edge_index):
-        h = self.conv1(x, edge_index)
+    def forward(self, x, edge_index, edge_attr):
+        h = self.conv1(x, edge_index, edge_attr)
         h = self.activation1(h)
-        h = self.conv2(h, edge_index)
+        h = self.conv2(h, edge_index, edge_attr)
         h = self.activation2(h)
-        h = self.conv3(h, edge_index)
+        h = self.conv3(h, edge_index, edge_attr)
         h = self.activation3(h)  # Final GNN embedding space.
-        h = self.conv4(h, edge_index)
+        h = self.conv4(h, edge_index, edge_attr)
         h = self.activation4(h)  # Final GNN embedding space.
-        h = self.conv5(h, edge_index)
+        h = self.conv5(h, edge_index, edge_attr)
         h = self.activation5(h)  # Final GNN embedding space.
 
         

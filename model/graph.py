@@ -2,6 +2,7 @@
 import torch
 import torch.nn as nn
 from torch_geometric.data import Data
+from skimage import color as convert_color
 
 import numpy as np
 from utils import *
@@ -108,13 +109,13 @@ class DesignGraph():
                 convert_to_tensor = torch.from_numpy(img[y:t, x:z]).permute(2,0,1).float()
                 processed_img = preprocess(convert_to_tensor)
                 cropped_image = torch.unsqueeze((processed_img), 0)
-                # embedding = self.pretrained_model(cropped_image)
+                embedding = self.pretrained_model(cropped_image)
 
                 #cropped_image = torch.unsqueeze(torch.Tensor(img[y:t, x:z]).permute(2,0,1), 0)
                 #embedding = self.pretrained_model(cropped_image)
-                relative_size = t*z / self.preview_img.shape[0]*self.preview_img.shape[1]
-                # self.node_information.append([num_node, layer, bbox, embedding, relative_size])
-                self.node_information.append([num_node, layer, bbox, relative_size])
+                relative_size = (t*z) / (self.preview_img.shape[0]*self.preview_img.shape[1])
+                self.node_information.append([num_node, layer, bbox, embedding, relative_size])
+                #self.node_information.append([num_node, layer, bbox, relative_size])
                 num_node+=1
 
         for node in self.node_information:
@@ -195,8 +196,8 @@ class DesignGraph():
         node_features = []
         y = []
         for i, node in enumerate(self.node_information):
-            # num_node, layer, bbox, embedding, relative_size = node
-            num_node, layer, bbox, relative_size = node
+            num_node, layer, bbox, embedding, relative_size = node
+            #num_node, layer, bbox, relative_size = node
             if layer == 'image':
                 color_palette = [self.extract_image_color_from_design(self.preview_path, bbox, layer)]
             elif layer == 'text':
@@ -204,7 +205,14 @@ class DesignGraph():
             elif layer == 'background':
                 color_palette = [self.extract_image_color_from_design(self.all_images[layer], bbox, layer)]
             
-            colors = np.asarray(color_palette).flatten()
+            new_color_palette = []
+            for color in color_palette:
+                color = color/255
+                lab_color = convert_color.rgb2lab(color)
+                new_color_palette.append(lab_color)
+
+            colors = np.asarray(new_color_palette).flatten()
+            # feature_vector = np.concatenate((np.asarray([self.layer_classes[layer]]), embedding.detach().numpy().flatten(), np.asarray([relative_size]), colors))
             feature_vector = np.concatenate((np.asarray([self.layer_classes[layer]]), np.asarray([relative_size]), colors))
             node_features.append(feature_vector)
             y.append(colors)
@@ -216,7 +224,7 @@ class DesignGraph():
                     y=torch.from_numpy(np.asarray(y)),
                     )
 
-        torch.save(data, os.path.join('../destijl_dataset/processed_w_embedding/', f'data_{path_idx}.pt'))
+        torch.save(data, os.path.join('../destijl_dataset/processed_hsv_w_embedding/', f'data_{path_idx}.pt'))
 
 
 
