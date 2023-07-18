@@ -23,11 +23,11 @@ class ColorGNNSmall(nn.Module):
         torch.manual_seed(42)
         self.conv1 = GCNConv(feature_size, 16)
         self.activation1 = nn.ReLU()
-        self.conv2 = GCNConv(16, 32)
+        self.conv2 = GCNConv(16, 64)
         self.activation2 = nn.ReLU()
-        self.conv3 = GCNConv(32, 16)
+        self.conv3 = GCNConv(64, 32)
         self.activation3 = nn.ReLU()
-        self.color_picker = Linear(16, 3)
+        self.color_picker = Linear(32, 3)
         self.sigmoid = nn.Sigmoid()
 
     def forward(self, x, edge_index, edge_attr):
@@ -62,6 +62,38 @@ class ColorGNN(nn.Module):
         h = self.activation2(h)
         h = self.conv3(h, edge_index, edge_attr)
         h = self.activation3(h)  # Final GNN embedding space.
+        out = self.color_picker(h)
+
+        return out
+
+class ColorGNNEmbedding(nn.Module):
+    def __init__(self, feature_size):
+        super(ColorGNNEmbedding, self).__init__()
+        torch.manual_seed(42)
+        self.conv1 = GCNConv(feature_size-5+(250*2)+(85*3), 512)
+        self.activation1 = nn.ReLU()
+        self.conv2 = GCNConv(512, 256)
+        self.activation2 = nn.ReLU()
+        self.conv3 = GCNConv(256, 64)
+        self.activation3 = nn.ReLU()
+        self.color_picker = Linear(64, 3)
+
+        self.layer_embedding = nn.Embedding(4, 250)
+        self.color_embedding = nn.Embedding(256, 85)
+        self.relative_size_embedding = nn.Embedding(11, 250)
+
+    def forward(self, x, edge_index, edge_attr):
+        layer_embed = self.layer_embedding(x[:, 0].long())
+        resnet_embedding = x[:, 1:1001]
+        relative_size_embedding = self.relative_size_embedding(torch.round(x[:, 1001]*10).long())
+        color_embedding =  self.color_embedding(x[:, -3:].long()).reshape(x.shape[0], -1)
+        x = torch.hstack((layer_embed, resnet_embedding, relative_size_embedding, color_embedding))
+        h = self.conv1(x, edge_index, edge_attr)
+        h = self.activation1(h)
+        h = self.conv2(h, edge_index, edge_attr)
+        h = self.activation2(h)
+        h = self.conv3(h, edge_index, edge_attr)
+        h = self.activation3(h)
         out = self.color_picker(h)
 
         return out

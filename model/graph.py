@@ -31,6 +31,7 @@ class DesignGraph():
         self.all_images = all_images
         self.preview_path = preview_path
         self.idx = idx
+        self.all_colors = []
 
         self.criteria = (cv2.TERM_CRITERIA_EPS + cv2.TERM_CRITERIA_MAX_ITER, 200, .1)
         self.flags = cv2.KMEANS_RANDOM_CENTERS
@@ -113,7 +114,12 @@ class DesignGraph():
 
                 #cropped_image = torch.unsqueeze(torch.Tensor(img[y:t, x:z]).permute(2,0,1), 0)
                 #embedding = self.pretrained_model(cropped_image)
-                relative_size = (t*z) / (self.preview_img.shape[0]*self.preview_img.shape[1])
+                if layer == "background":
+                    relative_size = 1
+                else:
+                    relative_size = (t*z) / (self.preview_img.shape[0]*self.preview_img.shape[1])
+                if relative_size > 1:
+                    relative_size = 1
                 self.node_information.append([num_node, layer, bbox, embedding, relative_size])
                 #self.node_information.append([num_node, layer, bbox, relative_size])
                 num_node+=1
@@ -188,6 +194,9 @@ class DesignGraph():
         else:
             return palette
 
+    def get_all_colors_in_design(self):
+        return self.all_colors
+
     def construct_graph(self):
         '''
             For now, only one color from the image is used
@@ -210,10 +219,16 @@ class DesignGraph():
                 color = color/255
                 lab_color = convert_color.rgb2lab(color)
                 new_color_palette.append(lab_color)
+            
+            self.all_colors.append(color_palette)
 
-            colors = np.asarray(new_color_palette).flatten()
-            # feature_vector = np.concatenate((np.asarray([self.layer_classes[layer]]), embedding.detach().numpy().flatten(), np.asarray([relative_size]), colors))
-            feature_vector = np.concatenate((np.asarray([self.layer_classes[layer]]), np.asarray([relative_size]), colors))
+            #colors = np.asarray(new_color_palette).flatten()
+            colors = np.asarray(color_palette).flatten()
+            # colors = self.color_embedding(colors)
+            # layer_class = self.layer_embedding(np.asarray([self.layer_classes[layer]]))
+            # relative_size = np.asarray([relative_size])
+            feature_vector = np.concatenate((np.asarray([self.layer_classes[layer]]), embedding.detach().numpy().flatten(), [relative_size], colors))
+            #feature_vector = np.concatenate((np.asarray([self.layer_classes[layer]]), np.asarray([relative_size]), colors))
             node_features.append(feature_vector)
             y.append(colors)
 
@@ -224,7 +239,7 @@ class DesignGraph():
                     y=torch.from_numpy(np.asarray(y)),
                     )
 
-        torch.save(data, os.path.join('../destijl_dataset/processed_hsv_w_embedding/', f'data_{path_idx}.pt'))
+        torch.save(data, os.path.join('../destijl_dataset/processed_hsv_nnembed/', f'data_{path_idx}.pt'))
 
 
 

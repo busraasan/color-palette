@@ -8,10 +8,16 @@ import csv
 
 from xml.etree.ElementTree import parse, Element, SubElement, ElementTree
 import xml.etree.ElementTree as ET
+from colormath.color_diff import delta_e_cie2000
+from colormath.color_objects import sRGBColor, HSVColor, LabColor, LCHuvColor, XYZColor, LCHabColor, AdobeRGBColor
 
 from PIL import Image, ImageChops
 from difflib import SequenceMatcher
 import torchvision.ops.boxes as bops
+
+'''
+    USE COLORMATH IN THE LOSS
+'''
 
 def bgr2rgb(color):
     x, y, z = color
@@ -32,8 +38,20 @@ def CIELab_distance(color1, color2, color_space="RGB"):
         lab2 = color.hsv2lab(color2)
     else:
         assert "Undefined input color space!"
+        
+    return np.sum((lab1[0] - lab2[0])**2 + (lab1[1] - lab2[1])**2 + (lab1[2] - lab2[2])**2)
 
-    return np.sqrt(np.sum((lab1[0] - lab2[0])**2 + (lab1[1] - lab2[0])**2 + (lab1[2] - lab2[0])**2))
+def CIELab_distance2(lab1, lab2):
+    l = (lab1[0] - lab2[0])**2
+    a = (lab1[1] - lab2[1])**2
+    b = (lab1[2] - lab2[2])**2
+    return l,a,b, torch.sum( (lab1[0] - lab2[0])**2 + (lab1[1] - lab2[1])**2 + (lab1[2] - lab2[2])**2 )
+
+def colormath_CIE2000(color1, color2):
+    # color1 = LabColor(*color1)
+    # color2 = LabColor(*color2)
+    x = delta_e_cie2000(color1, color2)
+    return x
 
 
 def VOC2bbox(xml_file: str):

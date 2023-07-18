@@ -17,17 +17,16 @@ class GraphDestijlDataset(Dataset):
         into raw_dir (downloaded dataset) and processed_dir (processed data). 
         """
         self.test = test
-        self.sample_filenames = os.listdir(root+'processed_hsv_w_embedding/')
-        self.processed_data_dir = root + 'processed_hsv_w_embedding/'
+        self.sample_filenames = os.listdir(root+'processed_hsv_nnembed/')
+        self.processed_data_dir = root + 'processed_hsv_nnembed/'
 
-        # self.sample_filenames = os.listdir(root+'processed/')
+        self.sample_filenames = os.listdir(root+'processed/')
         # self.processed_data_dir = root + 'processed/'
 
-
-        self.sample_filenames = ["data_{:04d}.pt".format(idx) for idx in range(140)]
+        self.sample_filenames = ["data_{:04d}.pt".format(idx) for idx in range(25)]
 
         self.train_filenames, self.test_filenames = train_test_split(self.sample_filenames, 
-                                                            test_size=0.30, 
+                                                            test_size=0.20, 
                                                             random_state=42)
 
         super(GraphDestijlDataset, self).__init__(root, transform, pre_transform)
@@ -58,9 +57,10 @@ class GraphDestijlDataset(Dataset):
             Put mask on a random node's color information.
         '''
         n_nodes = len(data.x)
-        node_to_mask = random.randint(0, n_nodes-1)
+        #node_to_mask = random.randint(0, n_nodes-1)
+        node_to_mask = n_nodes-1
         feature_vector = data.x
-        feature_vector[:, -3:] = feature_vector[:, -3:] / 255
+        feature_vector[:, -3:] = feature_vector[:, -3:]
         color_to_hide = feature_vector[node_to_mask, -3:].clone()
         feature_vector[node_to_mask, -3:] = torch.Tensor([0.0, 0.0, 0.0])
         new_data = data.clone()

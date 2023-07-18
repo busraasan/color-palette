@@ -460,12 +460,23 @@ class ProcessedDeStijl(Dataset):
                     all_bboxes[layer] = [[[0, 0], [self.img_img.shape[0], 0], [self.img_img.shape[0], self.img_img.shape[1]], [0, self.img_img.shape[1]]]]
                     all_images[layer] = img_path
 
-        DesignGraph(self.pretrained_model, all_images, all_bboxes, self.layers, img_path_dict['preview'], idx)
+        design_graph = DesignGraph(self.pretrained_model, all_images, all_bboxes, self.layers, img_path_dict['preview'], idx)
+        return design_graph.get_all_colors_in_design()
 
     def trial(self):
-        for i in range(0, 347):
-            print(i)
-            self.process_dataset(i)
+        vocabulary = []
+        for i in range(0, 347): #207 processed_hsv
+            print("Sample: ", i)
+            all_colors = self.process_dataset(i)
+            for nested_list in all_colors:
+                color = nested_list[0]
+                if len(color.shape) == 2:
+                    color = color[0]
+                color = color.tolist()
+                vocabulary.append(color)
+
+        vocab_size = len(np.unique(vocabulary, axis=0))
+        np.savetxt('vocab_size.txt', np.asarray([vocab_size]))
 
 if __name__ == "__main__":
     dataset = ProcessedDeStijl(data_path='../destijl_dataset')
