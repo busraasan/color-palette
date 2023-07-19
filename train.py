@@ -5,59 +5,50 @@ import seaborn as sns
 import matplotlib.pyplot as plt
 from skimage import color, io
 from colormath.color_objects import sRGBColor, HSVColor, LabColor, LCHuvColor, XYZColor, LCHabColor, AdobeRGBColor
-from colormath.color_conversions import convert_color
 
 from model.GNN import *
 from dataset import GraphDestijlDataset
 
 from utils import *
 import logging
+import yaml
+import argparse
+
+os.environ["CUDA_LAUNCH_BLOCKING"] = "1"
+
 '''
     Take small test, very small, Overfit, See model is corrext
     nn embedding to 1000 thousand or close to that
     Grey might have Minimum distance to evetutjing else, Penalize grey based on the saturation
 '''
 
-model_name = "processed_hsv"
-save_path = "../weights/" + model_name
+parser = argparse.ArgumentParser()
+parser.add_argument("--config_file", type=str, default="config/conf.yaml", help="Path to the config file.")
+args = parser.parse_args()
+config_file = args.config_file
 
-loss_path = f'log/log_'+model_name+'.log'
+with open(config_file, 'r') as f:
+    config = yaml.load(f, Loader=yaml.FullLoader)
 
-def save_model(state_dict, train_losses, val_losses, epoch):
-    torch.save(
-        {
-            "state_dict": state_dict,
-            "train_losses": train_losses,
-            "val_losses": val_losses,
-            "epoch": epoch,
-        },
-        os.path.join(save_path, "best.pth"),
-    )
+data_type = config["data_type"]
+model_name = config["model_name"]
+device = config["device"]
 
-def save_plot(train_losses, val_losses, loss_type):
+save_path = "../models/" + model_name + "/weights"
+loss_path =  "../models/" + model_name + "/losses"
+log_path = "../models/"+model_name
 
-    _, ax = plt.subplots()
+if not os.path.exists(save_path):
+    os.makedirs(save_path)
 
-    ax.plot(train_losses, label="train")
-    ax.plot(val_losses, label="val")
+if not os.path.exists(loss_path):
+    os.makedirs(loss_path)
 
-    ax.set_xlabel("Epoch")
-    ax.set_ylabel("Loss")
-    ax.legend()
-
-    plt.savefig(os.path.join(loss_path, "loss_" + loss_type + ".png"), dpi=300)
-    plt.cla()
-
-def CIELab2RGB(palette):
-    obj_palette = []
-    for color in palette:
-        color = LabColor(*color)
-        color = list(convert_color(color, sRGBColor, through_rgb_type=AdobeRGBColor).get_value_tuple())
-        obj_palette.append(color)
-    return obj_palette
+if not os.path.exists(log_path):
+    os.makedirs(log_path)
 
 logging.basicConfig(
-    filename=f'log/log_'+model_name+'.log',
+    filename=log_path+"/log.log",
     format='%(asctime)s %(levelname)-8s %(message)s',
     datefmt='%m-%d %H:%M-%S', level=logging.DEBUG, filemode='w')
 
@@ -66,13 +57,16 @@ logging.getLogger('matplotlib.font_manager').disabled = True
 seed = 42
 logger.info("#" * 100)
 
-num_epoch = 1000
-batch_size = 16
-model = ColorGNNEmbedding(feature_size=1005)
-optimizer = torch.optim.Adam(model.parameters(), lr=0.001)
+num_epoch = config["num_epoch"]
+batch_size = config["batch_size"]
+feature_size = config["feature_size"]
+lr =  config["lr"]
+weight_decay = config["weight_decay"]
+
+model = ColorGNNEmbedding(feature_size=feature_size).to(device)
+optimizer = torch.optim.Adam(model.parameters(), lr=lr)
 criterion = nn.MSELoss()
 lr_scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=25, gamma=0.1)
-#lr_scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer)
 
 train_dataset = GraphDestijlDataset(root='../destijl_dataset/')
 test_dataset = GraphDestijlDataset(root='../destijl_dataset/', test=True)
@@ -106,44 +100,62 @@ def test(data, target_color, node_to_mask):
     #loss = criterion(out[node_to_mask, :]*255, target_color*255)
     return l, a, b, loss2, out
 
+train_losses = []
+val_losses = []
 for epoch in range(num_epoch):
 
     total_train_loss = 0
     total_val_loss = 0
-    count=0
+    count = 0
     best_loss = 1000
+    
     for input_data, target_color, node_to_mask in train_loader:
-        l, a, b, loss, out, pred, target = train(input_data, target_color, node_to_mask)
-        if count == 0:
-            print("IMAGE LOSS")
-            print(loss.item())
-            print("l: ", l.item(), "a: ", a.item(), "b: ", b.item())
-            print("Pred and target")
-            print(pred)
-            print(target)
-        prediction = out[node_to_mask, :]
-        other_colors = input_data.y.clone()
-        other_colors = torch.cat([other_colors[0:node_to_mask, :], other_colors[node_to_mask+1:, :]])
-        # prediction in cielab
-        current_palette = torch.cat([other_colors, prediction, target_color]).type(torch.float32).detach().numpy()
-        sns.palplot(CIELab2RGB(current_palette))
-        plt.savefig("palettes/color_"+str(count)+".jpg")
-        plt.close()
-        count +=1
-
+        l, a, b, loss, out, pred, target = train(input_data.to(device), target_color.to(device), node_to_mask)
+        # if count == 0:
+        #     print("IMAGE LOSS")
+        #     print(loss.item())
+        #     print("l: ", l.item(), "a: ", a.item(), "b: ", b.item())
+        #     print("Pred and target")
+        #     print(pred)
+        #     print(target)
+        # prediction = out[node_to_mask, :]
+        # other_colors = input_data.y.clone()
+        # other_colors = torch.cat([other_colors[0:node_to_mask, :], other_colors[node_to_mask+1:, :]])
+        # # prediction in cielab
+        # current_palette = torch.cat([other_colors, prediction, target_color]).type(torch.float32).detach().numpy()
+        # sns.palplot(CIELab2RGB(current_palette))
+        # path = "../"+model_name+"_palettes"
+        # if not os.path.exists(path):
+        #     os.mkdir(path)
+        # plt.savefig(path+"/color_"+str(count)+".jpg")
+        # plt.close()
+        # count +=1
 
         total_train_loss += loss.item()
 
     for input_data, target_color, node_to_mask in test_loader:
-        l, a, b, loss, out = test(input_data, target_color, node_to_mask)
+        l, a, b, loss, out = test(input_data.to(device), target_color.to(device), node_to_mask)
         total_val_loss += loss.item()
 
+    val_loss = total_val_loss/len(test_dataset)
+    train_loss = total_train_loss/len(train_dataset)
+    train_losses.append(train_loss)
+    val_losses.append(val_loss)
+
     logger.info("------- Epoch " + str(epoch) + " -------")
-    logger.info("Train loss: " + str(total_train_loss/len(train_dataset))) 
-    logger.info("Test loss: " + str(total_val_loss/len(test_dataset)))
+    logger.info("Train loss: " + str(train_loss)) 
+    logger.info("Test loss: " + str(val_loss))
 
     print("------- Epoch ", epoch, " -------")
-    print("Train loss: ", total_train_loss/len(train_dataset))
-    print("Test loss: ", total_val_loss/len(test_dataset))
+    print("Train loss: ", train_loss)
+    print("Test loss: ", val_loss)
+
+    save_plot(train_losses=train_losses, val_losses=val_losses, loss_type="CIE2000", loss_path=loss_path)
+    if val_loss < best_loss:
+        best_loss = val_loss
+        model = model.cpu()
+        best_model = model.state_dict()
+        model = model.to(device)
+        save_model(state_dict=best_model, train_losses=train_losses, val_losses=val_losses, epoch=epoch, save_path=save_path)
 
     lr_scheduler.step()

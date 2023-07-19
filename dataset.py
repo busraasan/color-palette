@@ -5,6 +5,12 @@ from sklearn.model_selection import train_test_split
 import os
 import random
 import numpy as np
+import yaml
+
+with open("config/conf.yaml", 'r') as f:
+    config = yaml.load(f, Loader=yaml.FullLoader)
+
+data_type = config["data_type"]
 
 print(f"Torch version: {torch.__version__}")
 print(f"Cuda available: {torch.cuda.is_available()}")
@@ -17,13 +23,10 @@ class GraphDestijlDataset(Dataset):
         into raw_dir (downloaded dataset) and processed_dir (processed data). 
         """
         self.test = test
-        self.sample_filenames = os.listdir(root+'processed_hsv_nnembed/')
-        self.processed_data_dir = root + 'processed_hsv_nnembed/'
+        self.sample_filenames = os.listdir(root + data_type +'/')
+        self.processed_data_dir = root + data_type + '/'
 
-        self.sample_filenames = os.listdir(root+'processed/')
-        # self.processed_data_dir = root + 'processed/'
-
-        self.sample_filenames = ["data_{:04d}.pt".format(idx) for idx in range(25)]
+        self.sample_filenames = ["data_{:04d}.pt".format(idx) for idx in range(11)]
 
         self.train_filenames, self.test_filenames = train_test_split(self.sample_filenames, 
                                                             test_size=0.20, 

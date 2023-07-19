@@ -1,0 +1,11 @@
+model_name: "ColorGNNEmbeddingt"
+data_type: "processed"
+feature_size: 1005
+
+device: "cpu"
+lr: 0.01
+batch_size: 1
+weight_decay: 0.002
+num_epoch: 200
+
+dataset_root: "../destijl_dataset"

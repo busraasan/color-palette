@@ -2,7 +2,7 @@ import torch
 import torch.nn as nn
 from torch.nn import Linear
 from torch_geometric.nn import GCNConv
-
+from utils import *
 '''
     EMBEDDING SIZE IS TOO BIG
     try without embeddings
@@ -15,7 +15,6 @@ from torch_geometric.nn import GCNConv
 
     Convert rgb to cielab before training, do not convert it while calculating the loss
 '''
-from utils import *
 
 class ColorGNNSmall(nn.Module):
     def __init__(self, feature_size):

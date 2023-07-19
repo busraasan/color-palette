@@ -2,15 +2,31 @@
 import torch
 import torch.nn as nn
 from torch_geometric.data import Data
-from skimage import color as convert_color
+from skimage.color import rgb2lab, lab2rgb
 
 import numpy as np
 from utils import *
 from PIL import Image
 import math
 import cv2
+import yaml
+import argparse
 
 from torchvision import transforms
+
+"""
+    All of the processed files are corrupted unfortunately.
+"""
+parser = argparse.ArgumentParser()
+parser.add_argument("--config_file", type=str, default="config/conf.yaml", help="Path to the config file.")
+args = parser.parse_args()
+config_file = args.config_file
+
+with open(config_file, 'r') as f:
+    config = yaml.load(f, Loader=yaml.FullLoader)
+
+data_type = config["data_type"]
+model_name = config["model_name"]
 
 preprocess = transforms.Compose([
     transforms.Resize(256),
@@ -138,6 +154,7 @@ class DesignGraph():
 
     def extract_text_color_from_design(self, preview_path, bbox):
         image = cv2.imread(preview_path)
+        image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
         n_colors = 2
         
         # Crop the text area
@@ -196,6 +213,73 @@ class DesignGraph():
 
     def get_all_colors_in_design(self):
         return self.all_colors
+    
+    def my_palplot(self, pal, size=1, ax=None):
+        """Plot the values in a color palette as a horizontal array.
+        Parameters
+        ----------
+        pal : sequence of matplotlib colors
+            colors, i.e. as returned by seaborn.color_palette()
+        size :
+            scaling factor for size of plot
+        ax :
+            an existing axes to use
+        """
+
+        import numpy as np
+        import matplotlib as mpl
+        import matplotlib.pyplot as plt
+        import matplotlib.ticker as ticker
+
+        n = len(pal)
+        if ax is None:
+            f, ax = plt.subplots(1, 1, figsize=(n * size, size))
+        ax.imshow(np.arange(n).reshape(1, n),
+                cmap=mpl.colors.ListedColormap(list(pal)),
+                interpolation="nearest", aspect="auto")
+        ax.set_xticks(np.arange(n) - .5)
+        ax.set_yticks([-.5, .5])
+        # Ensure nice border between colors
+        ax.set_xticklabels(["" for _ in range(n)])
+        # The proper way to set no ticks
+        ax.yaxis.set_major_locator(ticker.NullLocator())
+
+    def sanity_check(self, color_palette):
+        '''
+            Palette in RGB
+        '''
+        print("hello")
+        rows = 2
+        cols = 2
+        fig, ax_array = plt.subplots(rows, rows, figsize=(20, 20), dpi=80, squeeze=False)
+        fig.suptitle("Sanity Check Palettes", fontsize=100)
+        
+        new_color_palette = []
+        for color in color_palette:
+            color = color[0]
+            print(color)
+            if len(color.shape) == 2:
+                color = color[0]
+            
+            new_color_palette.append(color)
+
+        ax1 = plt.subplot(rows, cols, 1)
+        color_palette = np.asarray(new_color_palette)/255
+        self.my_palplot(color_palette, ax=ax1)
+
+        ax2 = plt.subplot(rows, cols, 2)
+        lab_palette = [rgb2lab(color) for color in color_palette]
+        #self.my_palplot(lab_palette, ax=ax2)
+
+        ax3 = plt.subplot(rows, cols, 3)
+        rgb_palette = [lab2rgb(color) for color in lab_palette]
+        self.my_palplot(rgb_palette, ax=ax3)
+
+        ax4 =  plt.subplot(rows, cols, 4)
+        rgb_palette_colormath = CIELab2RGB(lab_palette)
+        self.my_palplot(rgb_palette_colormath, ax=ax4)
+
+        plt.savefig("all_conversions.jpg")
 
     def construct_graph(self):
         '''
@@ -217,21 +301,25 @@ class DesignGraph():
             new_color_palette = []
             for color in color_palette:
                 color = color/255
-                lab_color = convert_color.rgb2lab(color)
+                lab_color = rgb2lab(color)
                 new_color_palette.append(lab_color)
             
             self.all_colors.append(color_palette)
 
-            #colors = np.asarray(new_color_palette).flatten()
-            colors = np.asarray(color_palette).flatten()
-            # colors = self.color_embedding(colors)
-            # layer_class = self.layer_embedding(np.asarray([self.layer_classes[layer]]))
-            # relative_size = np.asarray([relative_size])
-            feature_vector = np.concatenate((np.asarray([self.layer_classes[layer]]), embedding.detach().numpy().flatten(), [relative_size], colors))
-            #feature_vector = np.concatenate((np.asarray([self.layer_classes[layer]]), np.asarray([relative_size]), colors))
+            if "embedding" in model_name.lower():
+                colors = np.asarray(color_palette).flatten()
+            else:
+                colors = np.asarray(new_color_palette).flatten()
+
+            if "w_embedding" in data_type.lower():
+                feature_vector = np.concatenate((np.asarray([self.layer_classes[layer]]), np.asarray([relative_size]), colors))
+            else:
+                feature_vector = np.concatenate((np.asarray([self.layer_classes[layer]]), embedding.detach().numpy().flatten(), [relative_size], colors))
+
             node_features.append(feature_vector)
             y.append(colors)
 
+        #self.sanity_check(self.all_colors)
         path_idx = "{:04d}".format(self.idx)
         data = Data(x=torch.from_numpy(np.asarray(node_features)).type(torch.float), 
                     edge_index=torch.Tensor(self.COO_matrix).permute(1,0).type(torch.int32),
@@ -239,7 +327,4 @@ class DesignGraph():
                     y=torch.from_numpy(np.asarray(y)),
                     )
 
-        torch.save(data, os.path.join('../destijl_dataset/processed_hsv_nnembed/', f'data_{path_idx}.pt'))
-
-
-
+        torch.save(data, os.path.join("../destijl_dataset/"+data_type, f'data_{path_idx}.pt'))

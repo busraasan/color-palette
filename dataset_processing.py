@@ -32,7 +32,7 @@ class ProcessedDeStijl(Dataset):
 
         self.data_path = data_path
         self.dataset_size = len(next(os.walk(self.path_dict['preview']))[2])
-        self.ocr = PaddleOCR(use_angle_cls=True, lang='en')
+        self.ocr = PaddleOCR(use_angle_cls=True, lang='en', use_gpu=True)
 
         self.criteria = (cv2.TERM_CRITERIA_EPS + cv2.TERM_CRITERIA_MAX_ITER, 200, .1)
         self.flags = cv2.KMEANS_RANDOM_CENTERS
@@ -465,7 +465,7 @@ class ProcessedDeStijl(Dataset):
 
     def trial(self):
         vocabulary = []
-        for i in range(0, 347): #207 processed_hsv
+        for i in range(0, 85): # 85te kaldi duz processed
             print("Sample: ", i)
             all_colors = self.process_dataset(i)
             for nested_list in all_colors:
@@ -477,6 +477,8 @@ class ProcessedDeStijl(Dataset):
 
         vocab_size = len(np.unique(vocabulary, axis=0))
         np.savetxt('vocab_size.txt', np.asarray([vocab_size]))
+
+        # all_colors = self.process_dataset(45)
 
 if __name__ == "__main__":
     dataset = ProcessedDeStijl(data_path='../destijl_dataset')

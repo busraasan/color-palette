@@ -4,7 +4,7 @@ from skimage import color, io
 import torch
 from collections import defaultdict
 import os
-import csv
+import matplotlib.pyplot as plt
 
 from xml.etree.ElementTree import parse, Element, SubElement, ElementTree
 import xml.etree.ElementTree as ET
@@ -14,10 +14,57 @@ from colormath.color_objects import sRGBColor, HSVColor, LabColor, LCHuvColor, X
 from PIL import Image, ImageChops
 from difflib import SequenceMatcher
 import torchvision.ops.boxes as bops
+from colormath.color_conversions import convert_color
+from model.GNN import *
 
 '''
     USE COLORMATH IN THE LOSS
 '''
+
+def model_switch(model_name, feature_size):
+    if model_name == "ColorGNNEmbedding":
+        return ColorGNNEmbedding(feature_size=feature_size)
+    elif model_name == "ColorGNN":
+        return ColorGNN(feature_size=feature_size)
+    elif model_name == "ColorGNNSmall":
+        return ColorGNNSmall(feature_size=feature_size)
+    elif model_name == "ColorGNNBigger":
+        return ColorGNNBigger(feature_size=feature_size)
+    else:
+        assert "There is no such model."
+        
+def save_model(state_dict, train_losses, val_losses, epoch, save_path):
+    torch.save(
+        {
+            "state_dict": state_dict,
+            "train_losses": train_losses,
+            "val_losses": val_losses,
+            "epoch": epoch,
+        },
+        os.path.join(save_path, "best.pth"),
+    )
+
+def save_plot(train_losses, val_losses, loss_type, loss_path):
+
+    _, ax = plt.subplots()
+
+    ax.plot(train_losses, label="train")
+    ax.plot(val_losses, label="val")
+
+    ax.set_xlabel("Epoch")
+    ax.set_ylabel("Loss")
+    ax.legend()
+
+    plt.savefig(os.path.join(loss_path, "loss_" + loss_type + ".png"), dpi=300)
+    plt.close()
+
+def CIELab2RGB(palette):
+    obj_palette = []
+    for color in palette:
+        color = LabColor(*color)
+        color = list(convert_color(color, sRGBColor, through_rgb_type=AdobeRGBColor).get_value_tuple())
+        obj_palette.append(color)
+    return obj_palette
 
 def bgr2rgb(color):
     x, y, z = color
