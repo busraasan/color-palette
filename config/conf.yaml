@@ -1,5 +1,5 @@
-model_name: "ColorGNNEmbeddingt"
-data_type: "processed"
+model_name: "ColorGNN"
+data_type: "processed_lab"
 feature_size: 1005
 
 device: "cpu"
