@@ -6,30 +6,36 @@ from collections import defaultdict
 import os
 import matplotlib.pyplot as plt
 
+from model.GNN import *
+
 from xml.etree.ElementTree import parse, Element, SubElement, ElementTree
 import xml.etree.ElementTree as ET
-from colormath.color_diff import delta_e_cie2000
+from colormath.color_diff import delta_e_cie2000, delta_e_cmc
 from colormath.color_objects import sRGBColor, HSVColor, LabColor, LCHuvColor, XYZColor, LCHabColor, AdobeRGBColor
 
 from PIL import Image, ImageChops
 from difflib import SequenceMatcher
 import torchvision.ops.boxes as bops
 from colormath.color_conversions import convert_color
-from model.GNN import *
+
 
 '''
     USE COLORMATH IN THE LOSS
 '''
 
 def model_switch(model_name, feature_size):
-    if model_name == "ColorGNNEmbedding":
+    if "ColorGNNEmbedding" in model_name:
         return ColorGNNEmbedding(feature_size=feature_size)
-    elif model_name == "ColorGNN":
-        return ColorGNN(feature_size=feature_size)
-    elif model_name == "ColorGNNSmall":
+    elif "ColorGNNSmallEmbedding" in model_name:
+        return ColorGNNSmallEmbedding(feature_size=feature_size)
+    elif "ColorGNNSmallEmbedding" in model_name:
+        return ColorGNNBiggerEmbedding(feature_size=feature_size)
+    elif "ColorGNNSmall" in model_name:
         return ColorGNNSmall(feature_size=feature_size)
-    elif model_name == "ColorGNNBigger":
+    elif "ColorGNNBigger" in model_name:
         return ColorGNNBigger(feature_size=feature_size)
+    elif "ColorGNN" in model_name:
+        return ColorGNN(feature_size=feature_size)
     else:
         assert "There is no such model."
         
@@ -63,6 +69,14 @@ def CIELab2RGB(palette):
     for color in palette:
         color = LabColor(*color)
         color = list(convert_color(color, sRGBColor, through_rgb_type=AdobeRGBColor).get_value_tuple())
+        obj_palette.append(color)
+    return obj_palette
+
+def RGB2CIELab(palette):
+    obj_palette = []
+    for color in [palette]:
+        color = sRGBColor(*color, is_upscaled=True)
+        color = list(convert_color(color, LabColor, through_rgb_type=AdobeRGBColor).get_value_tuple())
         obj_palette.append(color)
     return obj_palette
 
@@ -100,6 +114,9 @@ def colormath_CIE2000(color1, color2):
     x = delta_e_cie2000(color1, color2)
     return x
 
+def colormath_CIECMC(color1, color2):
+    x = delta_e_cmc(color1, color2)
+    return x
 
 def VOC2bbox(xml_file: str):
 

@@ -32,12 +32,13 @@ class ProcessedDeStijl(Dataset):
 
         self.data_path = data_path
         self.dataset_size = len(next(os.walk(self.path_dict['preview']))[2])
-        self.ocr = PaddleOCR(use_angle_cls=True, lang='en', use_gpu=True)
+        self.ocr = PaddleOCR(use_angle_cls=True, lang='en', use_gpu=False)
 
         self.criteria = (cv2.TERM_CRITERIA_EPS + cv2.TERM_CRITERIA_MAX_ITER, 200, .1)
         self.flags = cv2.KMEANS_RANDOM_CENTERS
 
         self.layers = ['image', 'background', 'text'] # Take this from config file later
+        # .layers = ['background', 'text']
         
         self.pretrained_model = resnet50(weights=ResNet50_Weights.IMAGENET1K_V1)
 
@@ -103,25 +104,6 @@ class ProcessedDeStijl(Dataset):
             trows,tcols = cropped_image.shape[:2]
             # --> left top, right top, right bottom, left bottom
             bbox = [[MPx,MPy], [MPx+tcols, MPy], [MPx+tcols, MPy+trows], [MPx, MPy+trows]]
-
-            # # Apply KMeans to the text area
-            # pixels = np.float32(cropped_image.reshape(-1, 3))
-            # _, labels, palette = cv2.kmeans(pixels, n_colors, None, self.criteria, 10, self.flags)
-            # palette = np.asarray(palette, dtype=np.int64)
-            # palette_w_white = []
-
-            # for i, color in enumerate(palette):
-            #     x, y, z = color
-            #     # Do not add white to the palette since it is the same background in every pic.
-            #     if not (252 < x < 256 and 252 < y < 256 and 252 < z < 256):
-            #         palette_w_white.append(color)
-            #     else:
-            #         labels = np.delete(labels, np.where(labels == i))
-
-            # _, counts = np.unique(labels, return_counts=True)
-            # dominant = palette_w_white[np.argmax(counts)]
-            # palettes.append(palette_w_white)
-            # dominants.append(dominant)
             new_bboxes.append(bbox)
 
         return new_bboxes, boxes, texts
@@ -222,6 +204,7 @@ class ProcessedDeStijl(Dataset):
         texts = [line[1][0].replace(" ", "").lower() for line in result]
         white_bg_texts = [elem.replace(" ", "").lower() for elem in white_bg_texts]
         image = cv2.imread(img_path)
+        image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
         same_idxs = []
         new_boxes = []
         
@@ -265,7 +248,6 @@ class ProcessedDeStijl(Dataset):
         
         # Load the image
         image = cv2.imread(decoration_path)
-        preview_image = cv2.imread(preview_path)
         
         # Convert the image to the RGB color space
         image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
@@ -354,8 +336,10 @@ class ProcessedDeStijl(Dataset):
         '''
         
         preview_image = cv2.imread(preview_path)
+        preview_image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
         cropped_image_path = trim_image(image_path, "02_image")
         image = cv2.imread(cropped_image_path)
+        image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
 
         if image.shape[0] > preview_image.shape[0]:
             diff_x = image.shape[0] - preview_image.shape[0]
@@ -464,8 +448,7 @@ class ProcessedDeStijl(Dataset):
         return design_graph.get_all_colors_in_design()
 
     def trial(self):
-        vocabulary = []
-        for i in range(0, 85): # 85te kaldi duz processed
+        for i in range(0, 705): 
             print("Sample: ", i)
             all_colors = self.process_dataset(i)
             for nested_list in all_colors:
@@ -473,12 +456,6 @@ class ProcessedDeStijl(Dataset):
                 if len(color.shape) == 2:
                     color = color[0]
                 color = color.tolist()
-                vocabulary.append(color)
-
-        vocab_size = len(np.unique(vocabulary, axis=0))
-        np.savetxt('vocab_size.txt', np.asarray([vocab_size]))
-
-        # all_colors = self.process_dataset(45)
 
 if __name__ == "__main__":
     dataset = ProcessedDeStijl(data_path='../destijl_dataset')

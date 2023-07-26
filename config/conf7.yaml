@@ -1,9 +1,0 @@
-batch_size: 1
-data_type: processed_rgb
-dataset_root: ../destijl_dataset
-device: cuda:2
-feature_size: 1005
-lr: 0.005
-model_name: ColorGNNEmbedding_lr0.005_wd0.0001
-num_epoch: 200
-weight_decay: 0.0001

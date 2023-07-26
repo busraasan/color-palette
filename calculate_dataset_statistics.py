@@ -35,6 +35,12 @@ for file in sample_filenames:
 mean_node = np.mean(all_node_mean, axis=0)
 std_dev_node = np.std(all_node_std, axis=0)
 
+if data_type == "processed_rgb":
+    mean_node[0] = 0
+    std_dev_node[0] = 1
+    mean_node[-3:] = [0, 0, 0]
+    std_dev_node[-3:] = [1, 1, 1]
+
 mean_edge = np.mean(all_edge_mean, axis=0)
 std_dev_edge = np.std(all_edge_std, axis=0)
 

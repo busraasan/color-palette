@@ -16,7 +16,7 @@ for i, lr in enumerate(lr_list):
                 "lr": lr,
                 "batch_size": 1,
                 "weight_decay": wd,
-                "num_epoch": 200,
+                "num_epoch": 150,
 
                 "dataset_root": "../destijl_dataset",
             }

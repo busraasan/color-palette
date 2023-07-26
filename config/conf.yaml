@@ -1,11 +1,13 @@
-model_name: "ColorGNN"
-data_type: "processed_lab"
-feature_size: 1005
+model_name: "ColorGNN_w_embedding"
+data_type: "processed_rgb_w_embedding"
+feature_size: 5
 
-device: "cpu"
-lr: 0.01
-batch_size: 1
-weight_decay: 0.002
-num_epoch: 200
+loss_function: "CIELab2000"
+
+device: "cuda:2"
+lr: 0.02
+batch_size: 16
+weight_decay: 0
+num_epoch: 300
 
 dataset_root: "../destijl_dataset"

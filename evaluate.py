@@ -2,7 +2,6 @@ import torch
 import torch.nn as nn
 from torch_geometric.loader import DataLoader
 
-from model.GNN import *
 from dataset import GraphDestijlDataset
 import yaml
 import argparse
@@ -35,7 +34,7 @@ test_dataset = GraphDestijlDataset(root='../destijl_dataset/', test=True)
 test_loader = DataLoader(test_dataset, batch_size=1, shuffle=False)
 num_of_plots = len(test_loader)
 
-model = ColorGNNEmbedding(feature_size=feature_size).to(device)
+model = model_switch(model_name, feature_size).to(device)
 model.load_state_dict(torch.load(model_weight_path)["state_dict"])
 
 ######################## Helper Functions ########################
@@ -76,9 +75,10 @@ def my_palplot(pal, size=1, ax=None):
     # The proper way to set no ticks
     ax.yaxis.set_major_locator(ticker.NullLocator())
 
-rows = num_of_plots
-cols = 1
-fig, ax_array = plt.subplots(rows, cols, figsize=(40, 40), dpi=80, squeeze=False)
+rows = num_of_plots//3 + 1
+cols = 3
+
+fig, ax_array = plt.subplots(rows, cols, figsize=(60, 60), dpi=80, squeeze=False)
 fig.suptitle(model_name+" Test Palettes", fontsize=100)
 
 plot_count = 0
@@ -91,15 +91,21 @@ for i, (input_data, target_color, node_to_mask) in enumerate(test_loader):
     ax = plt.subplot(rows, cols, plot_count+1)
 
     prediction = out[node_to_mask, :]
+    
     other_colors = input_data.y.clone()
     other_colors = torch.cat([other_colors[0:node_to_mask, :], other_colors[node_to_mask+1:, :]])
-    current_palette = torch.cat([other_colors, prediction, target_color.to(device)]).type(torch.float32).detach().cpu().numpy()
-    # THERE IS A CONFUSION ABOUT THE COLOR CONVERSIONS
-    if "embedding" in model_name.lower():
-        palette = np.clip(current_palette, a_min=0, a_max=255)/255
-        
-    else:
-        palette = CIELab2RGB(current_palette)
+    
+    other_colors = other_colors.type(torch.float32).detach().cpu().numpy()
+    other_colors /= 255
+    palette = np.clip(np.concatenate([other_colors, CIELab2RGB(prediction), CIELab2RGB(target_color[0])]), a_min=0, a_max=1)
+
+    # if "embedding" in model_name.lower():
+    #     other_colors = other_colors.type(torch.float32).detach().cpu().numpy()
+    #     other_colors /= 255
+    #     palette = np.clip(np.concatenate([other_colors, CIELab2RGB(prediction), CIELab2RGB(target_color[0])]), a_min=0, a_max=1)
+    # else:
+    #     current_palette = torch.cat([other_colors, prediction, target_color.to(device)]).type(torch.float32).detach().cpu().numpy()
+    #     palette = CIELab2RGB(current_palette)
 
     my_palplot(palette, ax=ax)
 

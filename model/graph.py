@@ -111,6 +111,7 @@ class DesignGraph():
                     middle_x = xmax - xmin
                     middle_y = ymax - ymin
 
+                    #img_hipotenus = math.sqrt(math.pow(self.preview_img.shape[0], 2)+math.pow(self.preview_img.shape[1],2))
                     distance = math.sqrt(math.pow(self_middle_x-middle_x, 2)+math.pow(self_middle_y-middle_y,2))
                     distance = format(distance, '.3f')
                 
@@ -123,6 +124,7 @@ class DesignGraph():
                 x, y = int(bbox[0][0]), int(bbox[0][1])
                 z, t = int(bbox[2][0]), int(bbox[2][1])
                 img = cv2.imread(self.all_images[layer])
+                img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
                 convert_to_tensor = torch.from_numpy(img[y:t, x:z]).permute(2,0,1).float()
                 processed_img = preprocess(convert_to_tensor)
                 cropped_image = torch.unsqueeze((processed_img), 0)
@@ -175,10 +177,17 @@ class DesignGraph():
         _, counts = np.unique(labels, return_counts=True)
         text_color = palette_w_white[np.argmin(counts)]
         background_color = palette_w_white[np.argmax(counts)]
+
+        # ax1 = plt.subplot(1, 1, 1)
+        # color_palette = np.asarray(text_color)/255
+        # self.my_palplot(color_palette, ax=ax1)
+        # plt.savefig("all_conversions_text.jpg")
+
         return text_color
 
     def extract_image_color_from_design(self, preview_path, bbox, layer):
         image = cv2.imread(preview_path)
+        image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
         if layer == "background":
             n_colors = 1
         else:
@@ -205,8 +214,13 @@ class DesignGraph():
                 palette_w_white.append(color)
 
             _, counts = np.unique(labels, return_counts=True)
-            text_color = palette_w_white[np.argmin(counts)]
-            background_color = palette_w_white[np.argmax(counts)] #dominant color
+            background_color = palette_w_white[np.argmax(counts)] #dominant
+
+            # ax1 = plt.subplot(1, 1, 1)
+            # color_palette = np.asarray(background_color)/255
+            # self.my_palplot(color_palette, ax=ax1)
+            # plt.savefig("all_conversions.jpg")
+
             return background_color
         else:
             return palette
@@ -248,7 +262,6 @@ class DesignGraph():
         '''
             Palette in RGB
         '''
-        print("hello")
         rows = 2
         cols = 2
         fig, ax_array = plt.subplots(rows, rows, figsize=(20, 20), dpi=80, squeeze=False)
@@ -257,7 +270,6 @@ class DesignGraph():
         new_color_palette = []
         for color in color_palette:
             color = color[0]
-            print(color)
             if len(color.shape) == 2:
                 color = color[0]
             
@@ -298,17 +310,29 @@ class DesignGraph():
             elif layer == 'background':
                 color_palette = [self.extract_image_color_from_design(self.all_images[layer], bbox, layer)]
             
-            new_color_palette = []
-            for color in color_palette:
-                color = color/255
-                lab_color = rgb2lab(color)
-                new_color_palette.append(lab_color)
-            
             self.all_colors.append(color_palette)
 
             if "embedding" in model_name.lower():
-                colors = np.asarray(color_palette).flatten()
+                new_color_palette = []
+                for color in color_palette:
+                    if len(color.shape) == 2:
+                        color = color[0]
+                    x, f, z = color
+                    if x == 0:
+                        x += 1
+                    if f == 0:
+                        f += 1
+                    if z == 0:
+                        z += 1
+                    color = [x, f, z]
+                    new_color_palette.append(color)
+                colors = np.asarray(new_color_palette).flatten()
             else:
+                new_color_palette = []
+                for color in color_palette:
+                    color = color/255
+                    lab_color = rgb2lab(color)
+                    new_color_palette.append(lab_color)
                 colors = np.asarray(new_color_palette).flatten()
 
             if "w_embedding" in data_type.lower():
