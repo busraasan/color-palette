@@ -17,6 +17,12 @@ from torchvision import transforms
 """
     All of the processed files are corrupted unfortunately.
 """
+transform = transforms.Compose([
+    transforms.Resize((256,256)),
+    transforms.ToTensor(), 
+    transforms.Normalize((0.5,), (0.5,))
+    ])
+
 parser = argparse.ArgumentParser()
 parser.add_argument("--config_file", type=str, default="config/conf.yaml", help="Path to the config file.")
 args = parser.parse_args()
@@ -27,6 +33,7 @@ with open(config_file, 'r') as f:
 
 data_type = config["data_type"]
 model_name = config["model_name"]
+threshold = config["threshold_for_neighbours"]
 
 preprocess = transforms.Compose([
     transforms.Resize(256),
@@ -97,7 +104,6 @@ class DesignGraph():
         self_xmax, self_ymax = np.max(bbox, axis=0)
         self_middle_x = self_xmax - self_xmin
         self_middle_y = self_ymax - self_ymin
-
         for node in self.node_information:
             if num_node == node[0]:
                 self.distance_matrix[num_node, num_node] = -1
@@ -114,7 +120,7 @@ class DesignGraph():
                     #img_hipotenus = math.sqrt(math.pow(self.preview_img.shape[0], 2)+math.pow(self.preview_img.shape[1],2))
                     distance = math.sqrt(math.pow(self_middle_x-middle_x, 2)+math.pow(self_middle_y-middle_y,2))
                     distance = format(distance, '.3f')
-                
+           
                 self.distance_matrix[num_node, node[0]] = distance
 
     def construct_features(self):
@@ -123,15 +129,18 @@ class DesignGraph():
             for bbox in self.all_bboxes[layer]:
                 x, y = int(bbox[0][0]), int(bbox[0][1])
                 z, t = int(bbox[2][0]), int(bbox[2][1])
-                img = cv2.imread(self.all_images[layer])
-                img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
-                convert_to_tensor = torch.from_numpy(img[y:t, x:z]).permute(2,0,1).float()
-                processed_img = preprocess(convert_to_tensor)
-                cropped_image = torch.unsqueeze((processed_img), 0)
-                embedding = self.pretrained_model(cropped_image)
 
-                #cropped_image = torch.unsqueeze(torch.Tensor(img[y:t, x:z]).permute(2,0,1), 0)
-                #embedding = self.pretrained_model(cropped_image)
+                if data_type == "processed_rgb_cnn":
+                    img = Image.open(self.all_images[layer]).convert("RGB")
+                    embedding = torch.flatten(self.pretrained_model.encoder(transform(img)), start_dim=1)
+                else:
+                    img = cv2.imread(self.all_images[layer])
+                    img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
+                    convert_to_tensor = torch.from_numpy(img[y:t, x:z]).permute(2,0,1).float()
+                    processed_img = preprocess(convert_to_tensor)
+                    cropped_image = torch.unsqueeze((processed_img), 0)
+                    embedding = self.pretrained_model(cropped_image)
+
                 if layer == "background":
                     relative_size = 1
                 else:
