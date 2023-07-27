@@ -1,10 +1,12 @@
-model_name: "ColorGNN_w_embedding"
-data_type: "processed_rgb_w_embedding"
-feature_size: 5
+model_name: "ColorGNNEmbedding_cnn"
+data_type: "processed_rgb_cnn"
+feature_size: 261
+
+threshold_for_neighbours: 0.4
 
 loss_function: "CIELab2000"
 
-device: "cuda:2"
+device: "cpu"
 lr: 0.02
 batch_size: 16
 weight_decay: 0

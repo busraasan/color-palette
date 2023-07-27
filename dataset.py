@@ -13,6 +13,7 @@ with open("config/conf.yaml", 'r') as f:
     config = yaml.load(f, Loader=yaml.FullLoader)
 
 data_type = config["data_type"]
+threshold = config["threshold_for_neighbours"]
 
 print(f"Torch version: {torch.__version__}")
 print(f"Cuda available: {torch.cuda.is_available()}")
@@ -28,7 +29,7 @@ class GraphDestijlDataset(Dataset):
         self.sample_filenames = os.listdir(root + '/' + data_type +'/')
         self.processed_data_dir = root + '/' + data_type + '/'
 
-        #self.sample_filenames = ["data_{:04d}.pt".format(idx) for idx in range(0, 220)]
+        self.sample_filenames = ["data_{:04d}.pt".format(idx) for idx in range(0, 113)]
 
         self.mean_node = np.load("dataset_statistics/mean_node.npy").astype(np.float32)
         self.std_dev_node = np.load("dataset_statistics/std_dev_node.npy").astype(np.float32)
@@ -83,15 +84,27 @@ class GraphDestijlDataset(Dataset):
 
         color_to_hide = torch.tensor(RGB2CIELab(color_to_hide.numpy().astype(np.int32)))
         #color_to_hide = torch.tensor(rgb2lab(color_to_hide.numpy().astype(np.int32)))
-
         feature_vector[node_to_mask, -3:] = torch.Tensor([0.0, 0.0, 0.0])
         new_data = data.clone()
         new_data.x = feature_vector
-        max = new_data.edge_attr.max()
+        max = new_data.edge_weight.max()
         if max == 0:
             max = 1
-        new_data.edge_attr = (new_data.edge_attr) / max + 1e-8
-        #new_data.edge_attr = torch.abs((new_data.edge_attr) / self.std_dev_edge)
+        new_data.edge_weight = (new_data.edge_weight) / max + 1e-8
+        #print("previous edges")
+        #print(new_data.edge_index, new_data.edge_weight)
+
+        new_edge_weight = []
+        new_edge_index = []
+        for k, edge in enumerate(new_data.edge_weight):
+            if edge.item() < threshold:
+                new_edge_weight.append(edge.item())
+                new_edge_index.append([new_data.edge_index[0][k], new_data.edge_index[1][k]])
+
+        new_data.edge_index = torch.Tensor(new_edge_index).T
+        new_data.edge_weight = torch.Tensor(new_edge_weight)
+        #print("New calculations")
+        #print(new_data.edge_index, new_data.edge_weight)
         return new_data, color_to_hide, node_to_mask
 
     def len(self):

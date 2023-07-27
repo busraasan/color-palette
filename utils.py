@@ -24,12 +24,14 @@ from colormath.color_conversions import convert_color
 '''
 
 def model_switch(model_name, feature_size):
-    if "ColorGNNEmbedding" in model_name:
-        return ColorGNNEmbedding(feature_size=feature_size)
+    if "ColorGNNEmbeddingClassification" in model_name:
+        return ColorGNNEmbeddingClassification(feature_size=feature_size)
     elif "ColorGNNSmallEmbedding" in model_name:
         return ColorGNNSmallEmbedding(feature_size=feature_size)
-    elif "ColorGNNSmallEmbedding" in model_name:
+    elif "ColorGNNBiggerEmbedding" in model_name:
         return ColorGNNBiggerEmbedding(feature_size=feature_size)
+    elif "ColorGNNEmbedding" in model_name:
+        return ColorGNNEmbedding(feature_size=feature_size)
     elif "ColorGNNSmall" in model_name:
         return ColorGNNSmall(feature_size=feature_size)
     elif "ColorGNNBigger" in model_name:
@@ -218,17 +220,23 @@ def calculate_iou(box_1, box_2):
     return bops.box_iou(box1, box2)
 
 def calculate_overlap(box_1, box_2):
-    # coordinate format [x1, y1, x2, y2] for bbox
     xmin1, ymin1 = np.min(box_1, axis=0)
     xmax1, ymax1 = np.max(box_1, axis=0)
+    # print(xmin1, ymin1,  xmax1, ymax1)
     w1 = xmax1 - xmin1
-    h1 = ymax1 - ymax1
+    h1 = ymax1 - ymin1
     box1 = torch.tensor([[xmin1, ymin1, xmax1, ymax1]], dtype=torch.float)
     xmin2, ymin2 = np.min(box_2, axis=0)
     xmax2, ymax2 = np.max(box_2, axis=0)
+    # print(xmin2, ymin2,  xmax2, ymax2)
     w2 = xmax2 - xmin2
-    h2 = ymax2 - ymax2
+    h2 = ymax2 - ymin2
     box2 = torch.tensor([[xmin2, ymin2, xmax2, ymax2]], dtype=torch.float)
+
+    # im = cv2.imread("../destijl_dataset/00_preview/0141.png")
+    # cv2.rectangle(im,(xmin1,ymin1),(xmax1, ymax1),(0,255,0),2)
+    # cv2.rectangle(im,(xmin2,ymin2),(xmax2, ymax2),(0,255,0),2)
+    # cv2.imwrite("check_rects"+str(w1*h1)+".jpg", im)
 
     dx = min(xmax1, xmax2) - max(xmin1, xmin2)
     dy = min(ymax1, ymax2) - max(ymin1, ymin2)
@@ -238,12 +246,15 @@ def calculate_overlap(box_1, box_2):
     else:
         overlaping_area = 0
 
-    if overlaping_area > w1*h1*11/10:
-        return overlaping_area/(w1*h1)
-    elif overlaping_area > w2*h2*11/10:
-        return overlaping_area/(w2*h2)
+    a1 = w1*h1
+    a2 = w2*h2
 
-    return overlaping_area
+    #print(a1, a2, overlaping_area)
+    smallest_rectangle_area  = a1 if a1 < a2 else a2
+
+    overlap_ratio = overlaping_area/smallest_rectangle_area
+
+    return overlap_ratio
 
 def delete_too_small_bboxes(boxes):
     x1 = boxes[:, 0]  # x coordinate of the top-left corner

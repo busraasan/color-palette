@@ -47,8 +47,8 @@ class PreviewDataset(Dataset):
 batch_size = 16
 lr=2e-3
 weight_decay=1e-4
-step_size=10
-device = "cuda:3"
+step_size=20
+device = "cuda:2"
 num_epoch = 100
 model_name = "CNNAutoencoder"
 

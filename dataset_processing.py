@@ -15,6 +15,7 @@ from sklearn.metrics import silhouette_score
 from matplotlib.colors import hsv_to_rgb, rgb_to_hsv
 
 from torchvision.models import resnet50, ResNet50_Weights
+from model.CNN import Autoencoder
 
 from model.graph import DesignGraph
 
@@ -38,9 +39,11 @@ class ProcessedDeStijl(Dataset):
         self.flags = cv2.KMEANS_RANDOM_CENTERS
 
         self.layers = ['image', 'background', 'text'] # Take this from config file later
-        # .layers = ['background', 'text']
+        # self.layers = ['background', 'text']
         
-        self.pretrained_model = resnet50(weights=ResNet50_Weights.IMAGENET1K_V1)
+        # self.pretrained_model = resnet50(weights=ResNet50_Weights.IMAGENET1K_V1)
+        self.pretrained_model = Autoencoder()
+        self.pretrained_model.load_state_dict(torch.load("../CNN_models/CNNAutoencoder/weights/best.pth")["state_dict"])
 
     def len(self):
         return self.dataset_size
@@ -434,21 +437,32 @@ class ProcessedDeStijl(Dataset):
                 all_bboxes[layer] = [[[0, 0], [self.preview_img.shape[0], 0], [self.preview_img.shape[0], self.preview_img.shape[1]], [0, self.preview_img.shape[1]]]]
             else:
                 if layer == 'text':
-                    img = img_path_dict['preview']
+                    img_path = img_path_dict['preview']
                     filename, bboxes = VOC2bbox(annotation_path_dict[layer])
                     all_bboxes[layer] = bboxes
-                    all_images[layer] = img
+                    all_images[layer] = img_path
                 elif layer == 'image':
-                    img_path = img_path_dict['image']
+                    img_path = img_path_dict['preview']
                     self.img_img = cv2.imread(img_path)
-                    all_bboxes[layer] = [[[0, 0], [self.img_img.shape[0], 0], [self.img_img.shape[0], self.img_img.shape[1]], [0, self.img_img.shape[1]]]]
+                    filename, bboxes = VOC2bbox(annotation_path_dict[layer])
+                    # for k, box in enumerate(bboxes):
+                        # im = cv2.imread("../destijl_dataset/00_preview/0000.png")
+                        # # [[xmin, ymin], [xmax, ymin], [xmax, ymax], [xmin, ymax]]
+                        # xmin = box[0][0]
+                        # xmax = box[1][0]
+                        # ymin = box[0][1]
+                        # ymax = box[2][1]
+                        # print(xmin, xmax, ymin, ymax)
+                        # cv2.rectangle(im,(xmin, ymin),(xmax, ymax),(255,0,0),2)
+                        # cv2.imwrite("check_bboxes"+str(k)+".jpg", im)
+                    all_bboxes[layer] = bboxes
                     all_images[layer] = img_path
 
         design_graph = DesignGraph(self.pretrained_model, all_images, all_bboxes, self.layers, img_path_dict['preview'], idx)
         return design_graph.get_all_colors_in_design()
 
     def trial(self):
-        for i in range(0, 705): 
+        for i in range(0, 706): 
             print("Sample: ", i)
             all_colors = self.process_dataset(i)
             for nested_list in all_colors:

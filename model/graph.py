@@ -132,7 +132,10 @@ class DesignGraph():
 
                 if data_type == "processed_rgb_cnn":
                     img = Image.open(self.all_images[layer]).convert("RGB")
-                    embedding = torch.flatten(self.pretrained_model.encoder(transform(img)), start_dim=1)
+                    temp = self.pretrained_model.encoder(transform(img))
+                    print(temp.shape)
+                    embedding = torch.flatten(temp, start_dim=1)
+                    print(embedding.shape)
                 else:
                     img = cv2.imread(self.all_images[layer])
                     img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
@@ -348,7 +351,7 @@ class DesignGraph():
                 feature_vector = np.concatenate((np.asarray([self.layer_classes[layer]]), np.asarray([relative_size]), colors))
             else:
                 feature_vector = np.concatenate((np.asarray([self.layer_classes[layer]]), embedding.detach().numpy().flatten(), [relative_size], colors))
-
+                print(feature_vector.shape)
             node_features.append(feature_vector)
             y.append(colors)
 
@@ -356,7 +359,7 @@ class DesignGraph():
         path_idx = "{:04d}".format(self.idx)
         data = Data(x=torch.from_numpy(np.asarray(node_features)).type(torch.float), 
                     edge_index=torch.Tensor(self.COO_matrix).permute(1,0).type(torch.int32),
-                    edge_attr=torch.Tensor(self.edge_features),
+                    edge_weight=torch.Tensor(self.edge_features),
                     y=torch.from_numpy(np.asarray(y)),
                     )
 

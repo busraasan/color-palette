@@ -55,8 +55,11 @@ class Autoencoder(torch.nn.Module):
  
     def forward(self, x):
         encoded = self.encoder(x)
+        print(encoded.shape)
         linear = self.linear(encoded)
+        print(linear.shape)
         x = linear.reshape(linear.shape[0], -1, 16, 16)
+        print(x.shape)
         decoded = self.decoder(x)
         return decoded
     

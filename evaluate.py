@@ -38,11 +38,17 @@ model = model_switch(model_name, feature_size).to(device)
 model.load_state_dict(torch.load(model_weight_path)["state_dict"])
 
 ######################## Helper Functions ########################
-
+skip_black_flag=True
 def test(data, target_color, node_to_mask):
     model.eval()
     out = model(data.x, data.edge_index.long(), data.edge_attr)
-    loss = colormath_CIE2000(out[node_to_mask, :][0], target_color[0])
+    if skip_black_flag:
+        for color in data.y:
+            a, b, c = color
+            if 0 <= a <= 30 and 0 <= b <= 30 and 0 <= c <= 30:
+                return None, None
+            else:
+                loss = colormath_CIE2000(out[node_to_mask, :][0], target_color[0])
     return loss, out
 
 def my_palplot(pal, size=1, ax=None):
@@ -85,29 +91,32 @@ plot_count = 0
 val_losses = []
 for i, (input_data, target_color, node_to_mask) in enumerate(test_loader):
     loss, out = test(input_data.to(device), target_color.to(device), node_to_mask)
-    val_losses.append(loss.item())
+    if loss != None:
+        val_losses.append(loss.item())
 
-    # Get predicton and other colors in the palette
-    ax = plt.subplot(rows, cols, plot_count+1)
+        # Get predicton and other colors in the palette
+        ax = plt.subplot(rows, cols, plot_count+1)
 
-    prediction = out[node_to_mask, :]
-    
-    other_colors = input_data.y.clone()
-    other_colors = torch.cat([other_colors[0:node_to_mask, :], other_colors[node_to_mask+1:, :]])
-    
-    other_colors = other_colors.type(torch.float32).detach().cpu().numpy()
-    other_colors /= 255
-    palette = np.clip(np.concatenate([other_colors, CIELab2RGB(prediction), CIELab2RGB(target_color[0])]), a_min=0, a_max=1)
+        prediction = out[node_to_mask, :]
+        
+        other_colors = input_data.y.clone()
+        other_colors = torch.cat([other_colors[0:node_to_mask, :], other_colors[node_to_mask+1:, :]])
+        
+        other_colors = other_colors.type(torch.float32).detach().cpu().numpy()
+        other_colors /= 255
+        palette = np.clip(np.concatenate([other_colors, CIELab2RGB(prediction), CIELab2RGB(target_color[0])]), a_min=0, a_max=1)
 
-    # if "embedding" in model_name.lower():
-    #     other_colors = other_colors.type(torch.float32).detach().cpu().numpy()
-    #     other_colors /= 255
-    #     palette = np.clip(np.concatenate([other_colors, CIELab2RGB(prediction), CIELab2RGB(target_color[0])]), a_min=0, a_max=1)
-    # else:
-    #     current_palette = torch.cat([other_colors, prediction, target_color.to(device)]).type(torch.float32).detach().cpu().numpy()
-    #     palette = CIELab2RGB(current_palette)
+        # if "embedding" in model_name.lower():
+        #     other_colors = other_colors.type(torch.float32).detach().cpu().numpy()
+        #     other_colors /= 255
+        #     palette = np.clip(np.concatenate([other_colors, CIELab2RGB(prediction), CIELab2RGB(target_color[0])]), a_min=0, a_max=1)
+        # else:
+        #     current_palette = torch.cat([other_colors, prediction, target_color.to(device)]).type(torch.float32).detach().cpu().numpy()
+        #     palette = CIELab2RGB(current_palette)
 
-    my_palplot(palette, ax=ax)
+        my_palplot(palette, ax=ax)
+    else:
+        print("none")
 
     plot_count+=1
 
