@@ -33,6 +33,7 @@ class DestijlProcessorCNN():
             'decoration': data_path + '/rgba_dataset/03_decoration/',
             'text': data_path + '/rgba_dataset/04_text/',
             'temporary': data_path + '/rgba_dataset/05_temporary/',
+            'cropped_preview': data_path + '/rgba_dataset/00_preview_cropped/',
         }
 
         self.xml_path_dict = {
@@ -201,7 +202,7 @@ class DestijlProcessorCNN():
 
     def pipeline(self):
         for idx in range(28, 706):
-            print(idx)
+            print("Sample: ", idx)
             path_idx = "{:04d}".format(idx)
 
             img_path = self.path_dict["image"]+path_idx+".png"
@@ -214,5 +215,21 @@ class DestijlProcessorCNN():
 
             self.paste_onto_decoration_layer(idx)
 
+    def resize_images(self):
+        for idx in range(28, 706):
+            path_idx = "{:04d}".format(idx)
+
+            method = cv2.TM_SQDIFF_NORMED
+            big_image = cv2.imread(self.rgba_path_dict["preview"]+path_idx+".png")
+            small_image = cv2.imread(self.path_dict["preview"]+path_idx+".png")
+            result = cv2.matchTemplate(small_image, big_image, method)
+            mn,_,mnLoc,_ = cv2.minMaxLoc(result)
+            MPx,MPy = mnLoc
+            trows,tcols = small_image.shape[:2]
+            box = [MPx, MPx+tcols, MPy, MPy+trows]
+            new_img = big_image[box[2]:box[3], box[0]:box[1]]
+            cv2.imwrite(self.rgba_path_dict["cropped_preview"]+path_idx+".png", new_img)
+
 processor = DestijlProcessorCNN("../destijl_dataset")
 processor.pipeline()
+processor.resize_images()
