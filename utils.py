@@ -18,10 +18,25 @@ from difflib import SequenceMatcher
 import torchvision.ops.boxes as bops
 from colormath.color_conversions import convert_color
 
+from model.CNN import *
 
 '''
     USE COLORMATH IN THE LOSS
 '''
+
+def model_switch_CNN(model_name, loss_function, map_outputs):
+    if "finetuneresnet18_classify" in model_name.lower():
+        return FinetuneResNet18_classify()
+    elif "finetuneresnet18" in model_name.lower():
+        if map_outputs:
+            if loss_function == "MSE":
+                return FinetuneResNet18(map_outputs="RGB")
+            else:
+                return FinetuneResNet18(map_outputs="CIELab")
+        else:
+            return FinetuneResNet18()
+    else:
+        assert "There is no such model"
 
 def model_switch(model_name, feature_size):
     if "ColorGNNEmbeddingClassification" in model_name:

@@ -1,0 +1,13 @@
+model_name: "CNN_finetuneresNet18_classify"
+
+loss_function: "Cross-Entropy"
+is_classification: True
+color_space: "RGB"
+map_outputs: True
+
+device: "cuda:1"
+lr: 0.01
+batch_size: 16
+weight_decay: 0
+num_epoch: 150
+step_size: 20

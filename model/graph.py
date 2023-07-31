@@ -131,11 +131,12 @@ class DesignGraph():
                 z, t = int(bbox[2][0]), int(bbox[2][1])
 
                 if data_type == "processed_rgb_cnn":
+                    """
+                        Data sizes in the embeddings and CNN need fixing. Retrain.
+                    """
                     img = Image.open(self.all_images[layer]).convert("RGB")
                     temp = self.pretrained_model.encoder(transform(img))
-                    print(temp.shape)
                     embedding = torch.flatten(temp, start_dim=1)
-                    print(embedding.shape)
                 else:
                     img = cv2.imread(self.all_images[layer])
                     img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)

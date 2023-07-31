@@ -64,9 +64,7 @@ class DestijlProcessorCNN():
         cv2.imwrite(self.rgba_path_dict[layer]+image_num, image_bgra)
 
     def locate_images_in_image_layer(self, idx):
-        """
-            NEEDS TESTING
-        """
+
         method = cv2.TM_SQDIFF_NORMED
         path_idx = "{:04d}".format(idx)
         preview_img = cv2.imread(self.path_dict["preview"]+path_idx+".png")
@@ -142,12 +140,6 @@ class DestijlProcessorCNN():
         return [int(xmin), int(xmax), int(ymin), int(ymax)]
 
     def paste_onto_decoration_layer(self, idx):
-        """
-            Take bboxes from locate_images_in_image_layer
-            Crop them and paste onto decoration layer one by one
-            Paste text layer
-            Save image to rgba_dataset/00_preview
-        """
         path_idx = "{:04d}".format(idx)
         preview_path = self.path_dict["preview"] + path_idx + ".png"
         img_path = self.path_dict["image"] + path_idx + ".png"
@@ -168,40 +160,41 @@ class DestijlProcessorCNN():
         text_bboxes, white_bg_text_boxes, texts = self.processed_dataset.extract_text_bbox(text_path, preview_path)
         text_bboxes_from_design, composed_text_palettes = self.processed_dataset.extract_text_directly(preview_path, texts)
 
-        design_text_coordinate = text_bboxes_from_design[0]
-        text_coordinate = white_bg_text_boxes[0]
-        new_image_boxes = self.map_image_coordinates(text_coordinate, design_text_coordinate, design_image_boxes, design_size, text_size)
+        if not text_bboxes_from_design or not white_bg_text_boxes:
+            pass
+        else:
+            design_text_coordinate = text_bboxes_from_design[0]
+            text_coordinate = white_bg_text_boxes[0]
+            new_image_boxes = self.map_image_coordinates(text_coordinate, design_text_coordinate, design_image_boxes, design_size, text_size)
 
-        white_bg = np.zeros( [decoration_img.shape[0], decoration_img.shape[1], 3] ,dtype=np.uint8)
-        white_bg.fill(255)
-        cv2.imwrite('bg.jpg', white_bg)
+            white_bg = np.zeros( [decoration_img.shape[0], decoration_img.shape[1], 3] ,dtype=np.uint8)
+            white_bg.fill(255)
 
-        white_bg = Image.open('bg.jpg')
-        decoration_overlay = Image.open(self.rgba_path_dict["decoration"] + path_idx + ".png")
-        text_overlay = Image.open(white_bg_text_path)
-        white_bg.paste(decoration_overlay, mask=decoration_overlay)
-        #white_bg.save(self.rgba_path_dict["temporary"] + path_idx + ".png")
-        
-        for j, box in enumerate(new_image_boxes):
-            xmin1, xmax1, ymin1, ymax1 = box # box place on decoration
-            xmin2, xmax2, ymin2, ymax2 = image_boxes[j] # box place on image
-            cropped_img = img[ymin2:ymax2, xmin2:xmax2]
+            cv2.imwrite('bg.jpg', white_bg)
 
-            cv2.imwrite(self.rgba_path_dict["temporary"] + path_idx + ".png", cropped_img)
-            self.whitebg_to_transparent(self.rgba_path_dict["temporary"] + path_idx + ".png", "temporary")
-            cropped_img = Image.open(self.rgba_path_dict["temporary"] + path_idx + ".png")
+            white_bg = Image.open('bg.jpg')
 
-            offset = (xmin1, ymin1)
-            white_bg.paste(cropped_img, offset, mask=cropped_img)
+            decoration_overlay = Image.open(self.rgba_path_dict["decoration"] + path_idx + ".png")
+            text_overlay = Image.open(white_bg_text_path)
+            white_bg.paste(decoration_overlay, mask=decoration_overlay)
+            
+            for j, box in enumerate(new_image_boxes):
+                xmin1, xmax1, ymin1, ymax1 = box # box place on decoration
+                xmin2, xmax2, ymin2, ymax2 = image_boxes[j] # box place on image
+                cropped_img = img[ymin2:ymax2, xmin2:xmax2]
 
-            #white_bg[ymin1:ymax1, xmin1:xmax1] = cropped_img
-        
-        #cv2.imwrite(self.rgba_path_dict["preview"] + path_idx + ".png", white_bg)
-        white_bg.paste(text_overlay, mask=text_overlay)
-        white_bg.save(self.rgba_path_dict["preview"] + path_idx + ".png")
+                cv2.imwrite(self.rgba_path_dict["temporary"] + path_idx + ".png", cropped_img)
+                self.whitebg_to_transparent(self.rgba_path_dict["temporary"] + path_idx + ".png", "temporary")
+                cropped_img = Image.open(self.rgba_path_dict["temporary"] + path_idx + ".png")
+
+                offset = (xmin1, ymin1)
+                white_bg.paste(cropped_img, offset, mask=cropped_img)
+
+            white_bg.paste(text_overlay, mask=text_overlay)
+            white_bg.save(self.rgba_path_dict["preview"] + path_idx + ".png")
 
     def pipeline(self):
-        for idx in range(28, 706):
+        for idx in range(550, 706):
             print("Sample: ", idx)
             path_idx = "{:04d}".format(idx)
 
@@ -216,20 +209,30 @@ class DestijlProcessorCNN():
             self.paste_onto_decoration_layer(idx)
 
     def resize_images(self):
-        for idx in range(28, 706):
+        for idx in range(84, 705):
             path_idx = "{:04d}".format(idx)
 
-            method = cv2.TM_SQDIFF_NORMED
-            big_image = cv2.imread(self.rgba_path_dict["preview"]+path_idx+".png")
-            small_image = cv2.imread(self.path_dict["preview"]+path_idx+".png")
-            result = cv2.matchTemplate(small_image, big_image, method)
-            mn,_,mnLoc,_ = cv2.minMaxLoc(result)
-            MPx,MPy = mnLoc
-            trows,tcols = small_image.shape[:2]
-            box = [MPx, MPx+tcols, MPy, MPy+trows]
-            new_img = big_image[box[2]:box[3], box[0]:box[1]]
-            cv2.imwrite(self.rgba_path_dict["cropped_preview"]+path_idx+".png", new_img)
+            if os.path.exists(self.rgba_path_dict["preview"]+path_idx+".png"):
+                print(idx)
+
+                method = cv2.TM_SQDIFF_NORMED
+                big_image = cv2.imread(self.rgba_path_dict["preview"]+path_idx+".png")
+                small_image = cv2.imread(self.path_dict["preview"]+path_idx+".png")
+                if(small_image.shape[0] > big_image.shape[0]):
+                    diff_x = abs(big_image.shape[0] - small_image.shape[0])
+                    big_image = cv2.copyMakeBorder(big_image, diff_x//2+5, diff_x//2+5, 0, 0, cv2.BORDER_CONSTANT, value=[255, 255, 255])
+
+                if(small_image.shape[1] > big_image.shape[1]):
+                    diff_y = abs(big_image.shape[1] - small_image.shape[1])
+                    big_image = cv2.copyMakeBorder(big_image, 0, 0, diff_y//2+5, diff_y//2+5, cv2.BORDER_CONSTANT, value=[255, 255, 255])
+
+                result = cv2.matchTemplate(small_image, big_image, method)
+                mn,_,mnLoc,_ = cv2.minMaxLoc(result)
+                MPx,MPy = mnLoc
+                trows,tcols = small_image.shape[:2]
+                box = [MPx, MPx+tcols, MPy, MPy+trows]
+                new_img = big_image[box[2]:box[3], box[0]:box[1]]
+                cv2.imwrite(self.rgba_path_dict["cropped_preview"]+path_idx+".png", new_img)
 
 processor = DestijlProcessorCNN("../destijl_dataset")
-processor.pipeline()
 processor.resize_images()

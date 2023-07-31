@@ -71,10 +71,6 @@ class ProcessedDeStijl(Dataset):
             If the the distance between two bbox is smaller than the bbox height and color is the same,
             we can group them as paragraphs.
 
-            TODO: Cut images automatically from the sides by a margin.
-            When constructing bounding boxes, add these margins back to the coordinates.
-            Sometimes texts are extremely small that the model cannot detect.
-
             Return: text color palettes, dominant colors for each text and position list (as bboxes).
         '''
         # Parameters for KMeans.
