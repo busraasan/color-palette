@@ -458,7 +458,7 @@ class ProcessedDeStijl(Dataset):
         return design_graph.get_all_colors_in_design()
 
     def trial(self):
-        for i in range(0, 706): 
+        for i in range(0, 1): 
             print("Sample: ", i)
             all_colors = self.process_dataset(i)
             for nested_list in all_colors:

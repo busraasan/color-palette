@@ -1,5 +1,5 @@
 model_name: "ColorGNNEmbedding_cnn"
-data_type: "processed_rgb_cnn"
+data_type: "processed_rgb_autoencoder"
 feature_size: 261
 
 threshold_for_neighbours: 0.4
@@ -11,5 +11,7 @@ lr: 0.02
 batch_size: 16
 weight_decay: 0
 num_epoch: 300
+
+encoder: "Autoencoder"
 
 dataset_root: "../destijl_dataset"

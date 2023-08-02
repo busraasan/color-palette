@@ -84,23 +84,23 @@ class FinetuneResNet18_classify(nn.Module):
     def forward(self, x):
         x = self.pretrained_model(x)
         x = self.color_head(x)
-        r = self.softmax(x[:256])
-        g = self.softmax(x[256:512])
-        b = self.softmax(x[512:])
+        r = self.softmax(x[:, :256])
+        g = self.softmax(x[:, 256:512])
+        b = self.softmax(x[:, 512:])
         return r, g, b
     
-class FinetuneResNet18(nn.Module):
-    def __init__(self, freeze_resnet=True, map_outputs="CIELab"):
+class ResNet18(nn.Module):
+    def __init__(self, freeze_resnet=True, map_outputs="RGB"):
         super().__init__()
 
         """
             Just map to interval
         """
-        self.pretrained_model = resnet18(weights=ResNet18_Weights.IMAGENET1K_V1)
+        self.pretrained_model = resnet18(weights=None)
         self.map_outputs = map_outputs
 
         for param in self.pretrained_model.parameters():
-            param.requires_grad_ = False
+            param.requires_grad_ = True
             
         self.pretrained_model.fc = nn.Linear(in_features=512, out_features=256)
 
@@ -127,12 +127,12 @@ class FinetuneResNet18(nn.Module):
             x[:, 2] = self.b_activation(x[:, 2]) * 127
 
         elif self.map_outputs == "RGB":
-            x = self.activation(x)
+            x = x
         return x
     
 
 class ColorCNN(nn.Module):
-    def __init__(self, num_channels, c_hid):
+    def __init__(self, num_channels=3, c_hid=16, use_sigmoid=False):
         super().__init__()
         self.encoder = torch.nn.Sequential(
             nn.Conv2d(num_channels, c_hid, kernel_size=3, padding=1, stride=2),  # 512x512 -> 256x256
@@ -161,7 +161,47 @@ class ColorCNN(nn.Module):
             nn.Linear(in_features=16*16*8, out_features=3)
         )
 
+        self.use_sigmoid = use_sigmoid
+        self.map_activation = nn.Sigmoid()
+
     def forward(self, x):
         x = self.encoder(x)
         x = self.color_head(x)
+        if self.use_sigmoid:
+            x = self.map_activation(x)
         return x
+    
+class ColorCNNBigger(nn.Module):
+    def __init__(self, num_channels=3, c_hid=16, use_sigmoid=False):
+        super().__init__()
+        self.encoder = torch.nn.Sequential(
+            nn.Conv2d(num_channels, c_hid, kernel_size=3, padding=1, stride=2),  # 512x512 -> 256x256
+            nn.BatchNorm2d(num_features=c_hid),
+            nn.ReLU(),
+            nn.Conv2d(c_hid, 2 * c_hid, kernel_size=3, padding=1),
+            nn.ReLU(),
+            nn.Conv2d(2 * c_hid, 4 * c_hid, kernel_size=3, padding=1, stride=2), # 256x256 -> 128x128
+            nn.BatchNorm2d(num_features=4*c_hid),
+            nn.ReLU(),
+            nn.Conv2d(4 * c_hid, 2 * c_hid, kernel_size=3, padding=1),
+            nn.ReLU(),
+            nn.Conv2d(2 * c_hid, c_hid//2, kernel_size=3, padding=1),  # 128x128 => 64x64
+            nn.BatchNorm2d(num_features=c_hid//2),
+           )
+        
+        self.color_head = nn.Sequential(
+            nn.Flatten(),
+            nn.Linear(in_features=32*32*8, out_features=16*16*4),
+            nn.Linear(in_features=16*16*4, out_features=3)
+        )
+
+        self.use_sigmoid = use_sigmoid
+        self.map_activation = nn.Sigmoid()
+
+    def forward(self, x):
+        x = self.encoder(x)
+        x = self.color_head(x)
+        if self.use_sigmoid:
+            x = self.map_activation(x)
+        return x
+

@@ -15,12 +15,6 @@ import argparse
 print(f"Torch version: {torch.__version__}")
 print(f"Cuda available: {torch.cuda.is_available()}")
 
-transform = transforms.Compose([
-    transforms.Resize((256,256)),
-    transforms.ToTensor(), 
-    transforms.Normalize((0.5,), (0.5,))
-    ])
-
 class PreviewDataset(Dataset):
     def __init__(self, root="../destijl_dataset/rgba_dataset/", transform=None, test=False, color_space="RGB", is_classification=False):
 
@@ -55,7 +49,7 @@ class PreviewDataset(Dataset):
             target_color = torch.squeeze(torch.tensor(color))
 
         if self.is_classification:
-            target_color = [torch.zeros(1, 256), torch.zeros(1, 256), torch.zeros(1, 256)]
+            target_color = [torch.zeros(256), torch.zeros(256), torch.zeros(256)]
             target_color[0][color[0]] = 1
             target_color[1][color[1]] = 1
             target_color[2][color[2]] = 1
@@ -102,6 +96,13 @@ loss_function = config["loss_function"]
 map_outputs = config["map_outputs"]
 color_space = config["color_space"]
 is_classification = config["is_classification"]
+input_size = config["input_size"]
+
+transform = transforms.Compose([
+    transforms.Resize((input_size, input_size)),
+    transforms.ToTensor(), 
+    transforms.Normalize((0.5,), (0.5,))
+    ])
 
 model = model_switch_CNN(model_name, loss_function, map_outputs).to(device)
 optimizer = torch.optim.AdamW(model.parameters(), lr=lr, weight_decay=weight_decay)
@@ -110,11 +111,13 @@ if loss_function == "MSE":
     criterion = nn.MSELoss()
 elif loss_function == "Cross-Entropy":
     criterion = nn.CrossEntropyLoss()
+elif loss_function == "MAE":
+    criterion = nn.L1Loss()
 
 lr_scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=step_size, gamma=0.1)
 
-train_dataset = PreviewDataset(transform=transform)
-test_dataset = PreviewDataset(transform=transform, test=True)
+train_dataset = PreviewDataset(transform=transform, color_space=color_space, is_classification=is_classification)
+test_dataset = PreviewDataset(transform=transform, test=True, color_space=color_space, is_classification=is_classification)
 
 train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True)
 test_loader = DataLoader(test_dataset, batch_size=1, shuffle=True)
@@ -129,13 +132,18 @@ if not os.path.exists(save_path):
 if not os.path.exists(loss_path):
     os.makedirs(loss_path)
 
+# Copy yaml file to the model folder
+with open("../CNN_models/"+model_name+"/conf.yaml", "w+") as wf:
+    yaml.dump(config, wf)
+
 def train(data, color):
     model.train()
     optimizer.zero_grad()
     out = model(data)
     loss = 0
     for i in range(batch_size):
-        if loss_function == "MSE":
+        if loss_function != "CIELab":
+            print(out[i], color[i]/255)
             loss += criterion(out[i], color[i]/255)
         else:
             loss += colormath_CIE2000(out[i], color[i])
@@ -147,25 +155,38 @@ def train(data, color):
 def test(data, color):
     model.eval()
     out = model(data)
-    if loss_function == "MSE":
+
+    if loss_function != "CIELab":
         loss = criterion(out[0], color[0]/255)
     else:
         loss = colormath_CIE2000(out[0], color[0])
     return loss, out
 
-def clasification_train(data):
+def classification_train(data, color):
     model.train()
     optimizer.zero_grad()
     r, g, b = model(data)
-    
-    loss_r = criterion(r, )
+    loss_r = criterion(r, color[0].to(device))
+    loss_g = criterion(g, color[1].to(device))
+    loss_b = criterion(b, color[2].to(device))
+
+    loss = loss_r + loss_g + loss_b
 
     loss.backward()
     optimizer.step()
-    return  loss, out
+    return  loss
 
-def classification_test():
-    pass
+def classification_test(data, color):
+    model.eval()
+    r, g, b = model(data)
+    
+    loss_r = criterion(r, color[0].to(device))
+    loss_g = criterion(g, color[1].to(device))
+    loss_b = criterion(b, color[2].to(device))
+
+    loss = loss_r + loss_g + loss_b
+
+    return  loss
 
 train_losses = []
 val_losses = []
@@ -180,16 +201,17 @@ for epoch in range(num_epoch):
     num_batches = len(train_loader)
     
     for input_data, target_color in train_loader:
-        loss, out = train(input_data.to(device), target_color.to(device))
-
-        if epoch == 10:
-            print("Out: ", out[0])
-            print("Target: ", target_color[0])
-
+        if is_classification:
+            loss = classification_train(input_data.to(device), target_color)
+        else:
+            loss, out = train(input_data.to(device), target_color.to(device))
         total_train_loss += loss.item()
 
     for input_data, target_color in test_loader:
-        loss, out = test(input_data.to(device), target_color.to(device))
+        if is_classification:
+            loss = classification_test(input_data.to(device), target_color)
+        else:
+            loss, out = test(input_data.to(device), target_color.to(device))
         total_val_loss += loss.item()
         
     val_loss = total_val_loss/len(test_dataset)
@@ -201,7 +223,7 @@ for epoch in range(num_epoch):
     print("Train loss: ", train_loss)
     print("Test loss: ", val_loss)
 
-    save_plot(train_losses=train_losses, val_losses=val_losses, loss_type="CIE2000", loss_path=loss_path)
+    save_plot(train_losses=train_losses, val_losses=val_losses, loss_type=loss_function, loss_path=loss_path)
     if val_loss < best_loss:
         best_loss = val_loss
         model = model.cpu()

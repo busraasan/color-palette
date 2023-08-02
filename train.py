@@ -109,7 +109,6 @@ threshold = 30
 def train(data, target_color, node_to_mask):
     model.train()
     optimizer.zero_grad()
-    print(data.x.shape)
     out = model(data.x, data.edge_index.long(), data.edge_weight)
     loss2 = 0
     mini_batch_size = node_to_mask.shape[0]

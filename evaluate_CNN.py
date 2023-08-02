@@ -18,27 +18,48 @@ import pandas as pd
 
 os.environ["CUDA_LAUNCH_BLOCKING"] = "1"
 
-model_name = "CNN_FinetuneResNet18_map_output"
-
 device = "cuda:1"
+
+parser = argparse.ArgumentParser()
+parser.add_argument("--model_name", type=str, default="ColorCNN", help="Give the name of the model.")
+args = parser.parse_args()
+model_name = args.model_name
+
+config_file = "../CNN_models/"+model_name+"/conf.yaml"
+
+with open(config_file, 'r') as f:
+    config = yaml.load(f, Loader=yaml.FullLoader)
+
+## Basic Training Parameters ##
+model_name = config["model_name"]
+device = config["device"]
+
+## Neural Network Parameters ##
+loss_function = config["loss_function"]
+map_outputs = config["map_outputs"]
+color_space = config["color_space"]
+is_classification = config["is_classification"]
+input_size = config["input_size"]
 
 model_weight_path = "../CNN_models/" + model_name + "/weights/best.pth"
 
 ######################## Model ########################
 
 transform = transforms.Compose([
-    transforms.Resize((256,256)),
+    transforms.Resize((input_size, input_size)),
     transforms.ToTensor(), 
     transforms.Normalize((0.5,), (0.5,))
     ])
 
 class PreviewDataset(Dataset):
-    def __init__(self, root="../destijl_dataset/rgba_dataset/", transform=None, test=False):
+    def __init__(self, root="../destijl_dataset/rgba_dataset/", transform=None, test=False, color_space="RGB", is_classification=False):
 
         self.test = test
         self.sample_filenames = os.listdir(root+"00_preview_cropped")
         self.transform = transform
         self.img_dir = root
+        self.color_space = color_space
+        self.is_classification = is_classification
 
         self.train_filenames, self.test_filenames = train_test_split(self.sample_filenames,
                                                                      test_size=0.2, 
@@ -57,11 +78,15 @@ class PreviewDataset(Dataset):
 
         bg_path = os.path.join("../destijl_dataset/01_background/" + self.sample_filenames[idx])
         color = self.kmeans_for_bg(bg_path)[0]
-        color_cielab = torch.tensor(RGB2CIELab(color.astype(np.int32)))
+
+        if self.color_space == "CIELab":
+            target_color = torch.squeeze(torch.tensor(RGB2CIELab(color.astype(np.int32))))
+        else:
+            target_color = torch.squeeze(torch.tensor(color))
 
         if self.transform:
             image = self.transform(image)
-        return image, torch.squeeze(color_cielab)
+        return image, target_color
     
     def kmeans_for_bg(self, bg_path):
         image = cv2.imread(bg_path)
@@ -78,20 +103,31 @@ class PreviewDataset(Dataset):
 
         return palette
 
-test_dataset = PreviewDataset(transform=transform, test=False)
+test_dataset = PreviewDataset(transform=transform, test=True, color_space=color_space)
 test_loader = DataLoader(test_dataset, batch_size=1, shuffle=False)
 num_of_plots = len(test_loader)
 
-model = FinetuneResNet18(map_outputs=True).to(device)
+model = model_switch_CNN(model_name, loss_function).to(device)
 model.load_state_dict(torch.load(model_weight_path)["state_dict"])
 
+if loss_function == "MSE":
+    criterion = nn.MSELoss()
+elif loss_function == "Cross-Entropy":
+    criterion = nn.CrossEntropyLoss()
+elif loss_function == "MAE":
+    criterion = nn.L1Loss()
 
 ######################## Helper Functions ########################
 def test(data, color):
     model.eval()
     out = model(data)
-    loss = colormath_CIE2000(out[0], color[0])
+
+    if loss_function != "CIELab":
+        loss = criterion(out[0], color[0]/255)
+    else:
+        loss = colormath_CIE2000(out[0], color[0])
     return loss, out
+
 
 def my_palplot(pal, size=1, ax=None):
     """Plot the values in a color palette as a horizontal array.
@@ -127,6 +163,10 @@ rows = num_of_plots//3 + 1
 cols = 3
 
 fig, ax_array = plt.subplots(rows, cols, figsize=(60, 60), dpi=80, squeeze=False)
+column_titles = ["Prediction                   Target" for i in range(cols)]
+for ax, col in zip(ax_array[0], column_titles):
+    ax.set_title(col, fontdict={'fontsize': 45, 'fontweight': 'medium'})
+
 fig.suptitle(model_name+" Test Palettes", fontsize=100)
 
 plot_count = 0
@@ -137,14 +177,13 @@ target_colors = []
 
 for i, (input_data, target_color) in enumerate(test_loader):
     loss, out = test(input_data.to(device), target_color.to(device))
-    print("CIELAB")
-    print(out)
     val_losses.append(loss.item())
-    print("RGB")
-    print(CIELab2RGB(out))
     # Get predicton and other colors in the palette
     ax = plt.subplot(rows, cols, plot_count+1)
-    palette = np.clip(np.concatenate([CIELab2RGB(out), CIELab2RGB(target_color)]), a_min=0, a_max=1)
+    if color_space == "CIELab":
+        palette = np.clip(np.concatenate([CIELab2RGB(out), CIELab2RGB(target_color)]), a_min=0, a_max=1)
+    else:
+        palette = np.clip(np.concatenate([out.detach().cpu().numpy(), target_color/255]), a_min=0, a_max=1)
     outputs.append(out.detach().cpu().numpy())
     target_colors.append(target_color.detach().cpu().numpy())
 

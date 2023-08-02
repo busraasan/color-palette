@@ -24,17 +24,15 @@ from model.CNN import *
     USE COLORMATH IN THE LOSS
 '''
 
-def model_switch_CNN(model_name, loss_function, map_outputs):
+def model_switch_CNN(model_name, loss_function, map_outputs=None):
     if "finetuneresnet18_classify" in model_name.lower():
         return FinetuneResNet18_classify()
-    elif "finetuneresnet18" in model_name.lower():
-        if map_outputs:
-            if loss_function == "MSE":
-                return FinetuneResNet18(map_outputs="RGB")
-            else:
-                return FinetuneResNet18(map_outputs="CIELab")
-        else:
-            return FinetuneResNet18()
+    elif "resnet18" in model_name.lower():
+        return ResNet18()
+    elif "colorcnnbigger" in model_name.lower():
+        return ColorCNNBigger()
+    elif "colorcnn" in model_name.lower():
+        return ColorCNN()
     else:
         assert "There is no such model"
 
