@@ -17,7 +17,7 @@ print(f"Torch version: {torch.__version__}")
 print(f"Cuda available: {torch.cuda.is_available()}")
 
 class PreviewDataset(Dataset):
-    def __init__(self, root="../destijl_dataset/rgba_dataset/", transform=None, test=False, color_space="RGB", input_color_space="RGB", is_classification=False):
+    def __init__(self, root="../destijl_dataset/rgba_dataset/", transform=None, test=False, color_space="RGB", input_color_space="RGB", is_classification=False, normalize_cielab=True):
 
         self.test = test
         self.sample_filenames = os.listdir(root+"00_preview_cropped")
@@ -26,6 +26,7 @@ class PreviewDataset(Dataset):
         self.color_space = color_space
         self.is_classification = is_classification
         self.input_color_space = input_color_space
+        self.normalize_cielab = normalize_cielab
 
         self.train_filenames, self.test_filenames = train_test_split(self.sample_filenames,
                                                                      test_size=0.2, 
@@ -41,24 +42,29 @@ class PreviewDataset(Dataset):
         path_idx = "{:04d}".format(idx)
         img_path = os.path.join(self.img_dir, "00_preview_cropped/" + self.sample_filenames[idx])
 
-        image = Image.open(img_path)
+        image = np.asarray(Image.open(img_path))
+        # Convert image to lab if the input space is CIELab.
+        # Image is a numpy array always. Convert to tensor at the end.
         if self.input_color_space == "CIELab":
             image = scicolor.rgb2lab(image)
-           
+            if self.normalize_cielab:
+                image = torch.from_numpy(image)
+                image = normalize_CIELab(image)
+        else:
+            image = torch.from_numpy(image)
+        
+        # Apply kmeans on RGB image always.
         bg_path = os.path.join("../destijl_dataset/01_background/" + self.sample_filenames[idx])
+        # Most dominant color in RGB.
         color = self.kmeans_for_bg(bg_path)[0]
 
+        # If output is in CIELab space but input is in RGB, convert target to CIELab also.
         if self.color_space == "CIELab" and self.input_color_space == "RGB":
             target_color = torch.squeeze(torch.tensor(RGB2CIELab(color.astype(np.int32))))
-        elif self.color_space == "CIELab" and self.input_color_space == "CIELab":
-            # Normalize the cielab space.
-            # Add 127 to make the a and b between (0, 255)
-            image = image + [0, 127, 127]
-            image = image / [100, 255, 255]
-            image = torch.from_numpy(image)
-            target_color = torch.squeeze(torch.tensor(RGB2CIELab(color.astype(np.int32))))
-            target_color += torch.Tensor([0, 127, 127])
-            target_color /= torch.Tensor([100, 255, 255])
+            if self.normalize_cielab:
+                target_color = normalize_CIELab(target_color)
+        # Input and output is in RGB space or input and output is in CIELab space.
+        # If Input is in CIELab and output is in RGB, than this is also valid since dataset is in RGB.
         else:
             target_color = torch.squeeze(torch.tensor(color))
 
@@ -69,8 +75,10 @@ class PreviewDataset(Dataset):
             target_color[2][color[2]] = 1
 
         if self.transform:
+            # Reshape the image if not in (C, H, W) form.
             if image.shape[0] != 3:
                 image = image.reshape(-1, image.shape[0], image.shape[1]).type("torch.FloatTensor")
+            # Apply the transformation
             image = self.transform(image)
 
         return image, target_color
@@ -109,7 +117,7 @@ device = config["device"]
 
 ## Neural Network Parameters ##
 loss_function = config["loss_function"]
-map_outputs = config["map_outputs"]
+out_features = config["out_features"]
 color_space = config["color_space"]
 input_color_space = config["input_color_space"]
 is_classification = config["is_classification"]
@@ -117,11 +125,10 @@ input_size = config["input_size"]
 
 transform = transforms.Compose([
     transforms.Resize((input_size, input_size)),
-    #transforms.ToTensor(), 
     transforms.Normalize((0.5,), (0.5,))
     ])
 
-model = model_switch_CNN(model_name, loss_function, map_outputs).to(device)
+model = model_switch_CNN(model_name, loss_function, out_features).to(device)
 optimizer = torch.optim.AdamW(model.parameters(), lr=lr, weight_decay=weight_decay)
 
 criterion = nn.MSELoss()
@@ -159,14 +166,20 @@ def train(data, color):
     model.train()
     optimizer.zero_grad()
     out = model(data)
-    loss = 0
-    for i in range(batch_size):
-        if loss_function != "CIELab":
-            loss += criterion(out[i], color[i]/255)
-        elif loss_function == "CIELab" and color_space == "CIELab":
-            #loss += colormath_CIE2000(out[i], color[i], normalized=True)
-            loss = criterion(out[i], color[i])
-    loss /= out.shape[0]
+    loss = criterion(out[:, 0], color[:, 0])
+    # for i in range(batch_size):
+    #     if loss_function == "MSE" and color_space == "CIELab":
+    #         # only lightness
+    #         loss += criterion(out[i], color[i][0])
+    #     elif loss_function != "CIELab":
+    #         # all color
+    #         loss += criterion(out[i], color[i]/255)
+    #     elif loss_function == "CIELab" and color_space == "CIELab":
+    #         #loss += colormath_CIE2000(out[i], color[i], normalized=True)
+    #         # only lightness
+    #         loss = criterion(out[i][0], color[i][0])   
+    # loss /= out.shape[0]
+
     loss.backward()
     optimizer.step()
     return  loss, out
