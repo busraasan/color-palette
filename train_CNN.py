@@ -4,6 +4,7 @@ from torch import autograd
 from torchvision import transforms
 from torch.utils.data import Dataset, DataLoader
 from PIL import Image
+import skimage.color as scicolor
 
 from sklearn.model_selection import train_test_split
 #from model.CNN import *
@@ -16,7 +17,7 @@ print(f"Torch version: {torch.__version__}")
 print(f"Cuda available: {torch.cuda.is_available()}")
 
 class PreviewDataset(Dataset):
-    def __init__(self, root="../destijl_dataset/rgba_dataset/", transform=None, test=False, color_space="RGB", is_classification=False):
+    def __init__(self, root="../destijl_dataset/rgba_dataset/", transform=None, test=False, color_space="RGB", input_color_space="RGB", is_classification=False):
 
         self.test = test
         self.sample_filenames = os.listdir(root+"00_preview_cropped")
@@ -24,6 +25,7 @@ class PreviewDataset(Dataset):
         self.img_dir = root
         self.color_space = color_space
         self.is_classification = is_classification
+        self.input_color_space = input_color_space
 
         self.train_filenames, self.test_filenames = train_test_split(self.sample_filenames,
                                                                      test_size=0.2, 
@@ -38,13 +40,25 @@ class PreviewDataset(Dataset):
 
         path_idx = "{:04d}".format(idx)
         img_path = os.path.join(self.img_dir, "00_preview_cropped/" + self.sample_filenames[idx])
-        image = Image.open(img_path).convert("RGB")
 
+        image = Image.open(img_path)
+        if self.input_color_space == "CIELab":
+            image = scicolor.rgb2lab(image)
+           
         bg_path = os.path.join("../destijl_dataset/01_background/" + self.sample_filenames[idx])
         color = self.kmeans_for_bg(bg_path)[0]
 
-        if self.color_space == "CIELab":
+        if self.color_space == "CIELab" and self.input_color_space == "RGB":
             target_color = torch.squeeze(torch.tensor(RGB2CIELab(color.astype(np.int32))))
+        elif self.color_space == "CIELab" and self.input_color_space == "CIELab":
+            # Normalize the cielab space.
+            # Add 127 to make the a and b between (0, 255)
+            image = image + [0, 127, 127]
+            image = image / [100, 255, 255]
+            image = torch.from_numpy(image)
+            target_color = torch.squeeze(torch.tensor(RGB2CIELab(color.astype(np.int32))))
+            target_color += torch.Tensor([0, 127, 127])
+            target_color /= torch.Tensor([100, 255, 255])
         else:
             target_color = torch.squeeze(torch.tensor(color))
 
@@ -55,6 +69,8 @@ class PreviewDataset(Dataset):
             target_color[2][color[2]] = 1
 
         if self.transform:
+            if image.shape[0] != 3:
+                image = image.reshape(-1, image.shape[0], image.shape[1]).type("torch.FloatTensor")
             image = self.transform(image)
 
         return image, target_color
@@ -95,18 +111,20 @@ device = config["device"]
 loss_function = config["loss_function"]
 map_outputs = config["map_outputs"]
 color_space = config["color_space"]
+input_color_space = config["input_color_space"]
 is_classification = config["is_classification"]
 input_size = config["input_size"]
 
 transform = transforms.Compose([
     transforms.Resize((input_size, input_size)),
-    transforms.ToTensor(), 
+    #transforms.ToTensor(), 
     transforms.Normalize((0.5,), (0.5,))
     ])
 
 model = model_switch_CNN(model_name, loss_function, map_outputs).to(device)
 optimizer = torch.optim.AdamW(model.parameters(), lr=lr, weight_decay=weight_decay)
 
+criterion = nn.MSELoss()
 if loss_function == "MSE":
     criterion = nn.MSELoss()
 elif loss_function == "Cross-Entropy":
@@ -114,10 +132,11 @@ elif loss_function == "Cross-Entropy":
 elif loss_function == "MAE":
     criterion = nn.L1Loss()
 
+
 lr_scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=step_size, gamma=0.1)
 
-train_dataset = PreviewDataset(transform=transform, color_space=color_space, is_classification=is_classification)
-test_dataset = PreviewDataset(transform=transform, test=True, color_space=color_space, is_classification=is_classification)
+train_dataset = PreviewDataset(transform=transform, color_space=color_space, input_color_space=input_color_space, is_classification=is_classification)
+test_dataset = PreviewDataset(transform=transform, test=True, color_space=color_space, input_color_space=input_color_space, is_classification=is_classification)
 
 train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True)
 test_loader = DataLoader(test_dataset, batch_size=1, shuffle=True)
@@ -143,10 +162,10 @@ def train(data, color):
     loss = 0
     for i in range(batch_size):
         if loss_function != "CIELab":
-            print(out[i], color[i]/255)
             loss += criterion(out[i], color[i]/255)
-        else:
-            loss += colormath_CIE2000(out[i], color[i])
+        elif loss_function == "CIELab" and color_space == "CIELab":
+            #loss += colormath_CIE2000(out[i], color[i], normalized=True)
+            loss = criterion(out[i], color[i])
     loss /= out.shape[0]
     loss.backward()
     optimizer.step()

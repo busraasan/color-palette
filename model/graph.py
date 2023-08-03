@@ -18,6 +18,7 @@ from torchvision import transforms
     All of the processed files are corrupted unfortunately.
 """
 transform = transforms.Compose([
+    transforms.ToPILImage(),
     transforms.Resize((256,256)),
     transforms.ToTensor(), 
     transforms.Normalize((0.5,), (0.5,))
@@ -142,8 +143,9 @@ class DesignGraph():
                     img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
                     convert_to_tensor = torch.from_numpy(img[y:t, x:z]).permute(2,0,1).float()
                     processed_img = preprocess(convert_to_tensor)
-                    cropped_image = torch.unsqueeze((processed_img), 0)
-                    embedding = self.pretrained_model(cropped_image)
+                    # cropped_image = torch.unsqueeze((processed_img), 0)
+                    # embedding = self.pretrained_model(transform(cropped_image))
+                    embedding = self.pretrained_model(torch.unsqueeze(transform(processed_img), 0))
 
                 if layer == "background":
                     relative_size = 1

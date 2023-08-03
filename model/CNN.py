@@ -55,11 +55,8 @@ class Autoencoder(torch.nn.Module):
  
     def forward(self, x):
         encoded = self.encoder(x)
-        print(encoded.shape)
         linear = self.linear(encoded)
-        print(linear.shape)
         x = linear.reshape(linear.shape[0], -1, 16, 16)
-        print(x.shape)
         decoded = self.decoder(x)
         return decoded
 
@@ -132,7 +129,7 @@ class ResNet18(nn.Module):
     
 
 class ColorCNN(nn.Module):
-    def __init__(self, num_channels=3, c_hid=16, use_sigmoid=False):
+    def __init__(self, num_channels=3, c_hid=16, reverse_normalize_output=True):
         super().__init__()
         self.encoder = torch.nn.Sequential(
             nn.Conv2d(num_channels, c_hid, kernel_size=3, padding=1, stride=2),  # 512x512 -> 256x256
@@ -161,18 +158,25 @@ class ColorCNN(nn.Module):
             nn.Linear(in_features=16*16*8, out_features=3)
         )
 
-        self.use_sigmoid = use_sigmoid
-        self.map_activation = nn.Sigmoid()
+        self.reverse_normalize_output = reverse_normalize_output
+        #self.addition = Addition()
+        #self.multiplication =  torch.Tensor([100, 255, 255]).to("cuda:1")
 
     def forward(self, x):
         x = self.encoder(x)
         x = self.color_head(x)
-        if self.use_sigmoid:
-            x = self.map_activation(x)
         return x
     
+class Addition(nn.Module):
+    def __init__(self) -> None:
+        super().__init__()
+
+    def forward(self, input: torch.Tensor) -> torch.Tensor:
+        input += torch.Tensor([0, 127, 127]).to("cuda:1")
+        return input
+    
 class ColorCNNBigger(nn.Module):
-    def __init__(self, num_channels=3, c_hid=16, use_sigmoid=False):
+    def __init__(self, num_channels=3, c_hid=16):
         super().__init__()
         self.encoder = torch.nn.Sequential(
             nn.Conv2d(num_channels, c_hid, kernel_size=3, padding=1, stride=2),  # 512x512 -> 256x256
@@ -185,7 +189,10 @@ class ColorCNNBigger(nn.Module):
             nn.ReLU(),
             nn.Conv2d(4 * c_hid, 2 * c_hid, kernel_size=3, padding=1),
             nn.ReLU(),
-            nn.Conv2d(2 * c_hid, c_hid//2, kernel_size=3, padding=1),  # 128x128 => 64x64
+            nn.Conv2d(2 * c_hid, c_hid, kernel_size=3, padding=1, stride=2),  # 128x128 => 64x64
+            nn.BatchNorm2d(num_features=c_hid),
+            nn.ReLU(),
+            nn.Conv2d(c_hid, c_hid//2, kernel_size=3, padding=1, stride=2),  # 128x128 => 64x64
             nn.BatchNorm2d(num_features=c_hid//2),
            )
         
@@ -195,13 +202,8 @@ class ColorCNNBigger(nn.Module):
             nn.Linear(in_features=16*16*4, out_features=3)
         )
 
-        self.use_sigmoid = use_sigmoid
-        self.map_activation = nn.Sigmoid()
-
     def forward(self, x):
         x = self.encoder(x)
         x = self.color_head(x)
-        if self.use_sigmoid:
-            x = self.map_activation(x)
         return x
 

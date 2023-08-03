@@ -123,6 +123,7 @@ def test(data, color):
     out = model(data)
 
     if loss_function != "CIELab":
+        print(out[0])
         loss = criterion(out[0], color[0]/255)
     else:
         loss = colormath_CIE2000(out[0], color[0])
