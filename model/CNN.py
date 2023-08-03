@@ -129,7 +129,7 @@ class ResNet18(nn.Module):
     
 
 class ColorCNN(nn.Module):
-    def __init__(self, num_channels=3, c_hid=16, reverse_normalize_output=True):
+    def __init__(self, num_channels=3, c_hid=16, out_features=3, reverse_normalize_output=True):
         super().__init__()
         self.encoder = torch.nn.Sequential(
             nn.Conv2d(num_channels, c_hid, kernel_size=3, padding=1, stride=2),  # 512x512 -> 256x256
@@ -155,7 +155,7 @@ class ColorCNN(nn.Module):
         
         self.color_head = nn.Sequential(
             nn.Flatten(),
-            nn.Linear(in_features=16*16*8, out_features=3)
+            nn.Linear(in_features=16*16*8, out_features=out_features)
         )
 
         self.reverse_normalize_output = reverse_normalize_output
