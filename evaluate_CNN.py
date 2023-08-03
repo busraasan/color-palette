@@ -1,8 +1,7 @@
 import torch
 import torch.nn as nn
-from torch.utils.data import Dataset, DataLoader
+from torch.utils.data import DataLoader
 
-from sklearn.model_selection import train_test_split
 import yaml
 import argparse
 from torchvision import transforms
@@ -11,6 +10,7 @@ import seaborn as sns
 import matplotlib.pyplot as plt
 from utils import *
 from model.CNN import *
+from cnn_dataset import *
 
 import pandas as pd
 
@@ -36,10 +36,13 @@ device = config["device"]
 
 ## Neural Network Parameters ##
 loss_function = config["loss_function"]
-map_outputs = config["map_outputs"]
+out_features = config["out_features"]
 color_space = config["color_space"]
+input_color_space = config["input_color_space"]
 is_classification = config["is_classification"]
 input_size = config["input_size"]
+normalize_rgb = config["normalize_rgb"]
+normalize_cielab = config["normalize_cielab"]
 
 model_weight_path = "../CNN_models/" + model_name + "/weights/best.pth"
 
@@ -51,59 +54,13 @@ transform = transforms.Compose([
     transforms.Normalize((0.5,), (0.5,))
     ])
 
-class PreviewDataset(Dataset):
-    def __init__(self, root="../destijl_dataset/rgba_dataset/", transform=None, test=False, color_space="RGB", is_classification=False):
+test_dataset = PreviewDataset(transform=transform, 
+                               color_space=color_space, 
+                               input_color_space=input_color_space,
+                               normalize_rgb=normalize_rgb,
+                               normalize_cielab=normalize_cielab,
+                               test=True)
 
-        self.test = test
-        self.sample_filenames = os.listdir(root+"00_preview_cropped")
-        self.transform = transform
-        self.img_dir = root
-        self.color_space = color_space
-        self.is_classification = is_classification
-
-        self.train_filenames, self.test_filenames = train_test_split(self.sample_filenames,
-                                                                     test_size=0.2, 
-                                                                     random_state=42) 
-    def __len__(self):
-        if self.test:
-            return len(self.test_filenames)
-        else:
-            return len(self.train_filenames)
-        
-    def __getitem__(self, idx):
-
-        path_idx = "{:04d}".format(idx)
-        img_path = os.path.join(self.img_dir, "00_preview_cropped/" + self.sample_filenames[idx])
-        image = Image.open(img_path).convert("RGB")
-
-        bg_path = os.path.join("../destijl_dataset/01_background/" + self.sample_filenames[idx])
-        color = self.kmeans_for_bg(bg_path)[0]
-
-        if self.color_space == "CIELab":
-            target_color = torch.squeeze(torch.tensor(RGB2CIELab(color.astype(np.int32))))
-        else:
-            target_color = torch.squeeze(torch.tensor(color))
-
-        if self.transform:
-            image = self.transform(image)
-        return image, target_color
-    
-    def kmeans_for_bg(self, bg_path):
-        image = cv2.imread(bg_path)
-        image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
-        n_colors = 1
-
-        # Apply KMeans to the text area
-        pixels = np.float32(image.reshape(-1, 3))
-        criteria = (cv2.TERM_CRITERIA_EPS + cv2.TERM_CRITERIA_MAX_ITER, 200, .1)
-        flags = cv2.KMEANS_RANDOM_CENTERS
-
-        _, labels, palette = cv2.kmeans(pixels, n_colors, None, criteria, 10, flags)
-        palette = np.asarray(palette, dtype=np.int64) # RGB
-
-        return palette
-
-test_dataset = PreviewDataset(transform=transform, test=True, color_space=color_space)
 test_loader = DataLoader(test_dataset, batch_size=1, shuffle=False)
 num_of_plots = len(test_loader)
 
