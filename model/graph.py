@@ -64,12 +64,14 @@ class DesignGraph():
         self.num_nodes_per_class = {
             'image':0,
             'background':0,
-            'text':0
+            'text':0,
+            "decoration":0
         }
         self.layer_classes = {
             'image':0,
             'background':1,
-            'text':2
+            'text':2,
+            "decoration":3,
         }
         self.node_information = []
         self.preview_img = cv2.imread(preview_path)
@@ -118,8 +120,9 @@ class DesignGraph():
                     middle_x = xmax - xmin
                     middle_y = ymax - ymin
 
-                    #img_hipotenus = math.sqrt(math.pow(self.preview_img.shape[0], 2)+math.pow(self.preview_img.shape[1],2))
+                    img_hipotenus = math.sqrt(math.pow(self.preview_img.shape[0], 2)+math.pow(self.preview_img.shape[1],2))
                     distance = math.sqrt(math.pow(self_middle_x-middle_x, 2)+math.pow(self_middle_y-middle_y,2))
+                    distance = distance / img_hipotenus
                     distance = format(distance, '.3f')
            
                 self.distance_matrix[num_node, node[0]] = distance
@@ -132,9 +135,6 @@ class DesignGraph():
                 z, t = int(bbox[2][0]), int(bbox[2][1])
 
                 if data_type == "processed_rgb_cnn":
-                    """
-                        Data sizes in the embeddings and CNN need fixing. Retrain.
-                    """
                     img = Image.open(self.all_images[layer]).convert("RGB")
                     temp = self.pretrained_model.encoder(transform(img))
                     embedding = torch.flatten(temp, start_dim=1)
@@ -211,26 +211,25 @@ class DesignGraph():
         x, y = int(bbox[0][0]), int(bbox[0][1])
         z, t = int(bbox[2][0]), int(bbox[2][1])
         cropped_image = image[y:t, x:z]
+        cv2.imwrite("cropped.jpg", cropped_image)
 
         # Apply KMeans to the text area
         pixels = np.float32(cropped_image.reshape(-1, 3))
         _, labels, palette = cv2.kmeans(pixels, n_colors, None, self.criteria, 10, self.flags)
         palette = np.asarray(palette, dtype=np.int64)
         palette_w_white = []
-
         if layer != "background":
             for i, color in enumerate(palette):
+                x, y, z = color
                 # Do not add white to the palette
                 if not (252 < x < 256 and 252 < y < 256 and 252 < z < 256):
                     palette_w_white.append(color)
                 else:
                     labels = np.delete(labels, np.where(labels == i))
                 x, y, z = color
-                palette_w_white.append(color)
 
             _, counts = np.unique(labels, return_counts=True)
             background_color = palette_w_white[np.argmax(counts)] #dominant
-
             # ax1 = plt.subplot(1, 1, 1)
             # color_palette = np.asarray(background_color)/255
             # self.my_palplot(color_palette, ax=ax1)
@@ -319,11 +318,21 @@ class DesignGraph():
             num_node, layer, bbox, embedding, relative_size = node
             #num_node, layer, bbox, relative_size = node
             if layer == 'image':
+                # print("Image")
                 color_palette = [self.extract_image_color_from_design(self.preview_path, bbox, layer)]
+                #print(color_palette)
             elif layer == 'text':
+                # print("Text")
                 color_palette = [self.extract_text_color_from_design(self.preview_path, bbox)]
+                # print(color_palette)
             elif layer == 'background':
+                # print("Background")
                 color_palette = [self.extract_image_color_from_design(self.all_images[layer], bbox, layer)]
+                # print(color_palette)
+            elif layer == "decoration":
+                # print("Decoration")
+                color_palette = [self.extract_image_color_from_design(self.preview_path, bbox, layer)]
+                # print(color_palette)
             
             self.all_colors.append(color_palette)
 
@@ -354,10 +363,8 @@ class DesignGraph():
                 feature_vector = np.concatenate((np.asarray([self.layer_classes[layer]]), np.asarray([relative_size]), colors))
             else:
                 feature_vector = np.concatenate((np.asarray([self.layer_classes[layer]]), embedding.detach().numpy().flatten(), [relative_size], colors))
-                print(feature_vector.shape)
             node_features.append(feature_vector)
             y.append(colors)
-
         #self.sanity_check(self.all_colors)
         path_idx = "{:04d}".format(self.idx)
         data = Data(x=torch.from_numpy(np.asarray(node_features)).type(torch.float), 
@@ -365,5 +372,7 @@ class DesignGraph():
                     edge_weight=torch.Tensor(self.edge_features),
                     y=torch.from_numpy(np.asarray(y)),
                     )
-
-        torch.save(data, os.path.join("../destijl_dataset/"+data_type, f'data_{path_idx}.pt'))
+        
+        if not os.path.exists("../shape_dataset/"+data_type):
+            os.mkdir("../shape_dataset/"+data_type)
+        torch.save(data, os.path.join("../shape_dataset/"+data_type, f'data_{path_idx}.pt'))

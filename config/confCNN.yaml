@@ -1,14 +1,16 @@
-model_name: "ColorCNNBigger"
-
-loss_function: "MSE"
-is_classification: False
-color_space: "RGB"
-map_outputs: True
-input_size: 256
-
-device: "cuda:1"
-lr: 0.05
 batch_size: 16
-weight_decay: 0
+color_space: CIELab
+device: cuda:1
+input_color_space: RGB
+input_size: 512
+is_classification: false
+loss_function: MSE
+out_features: 1
+lr: 0.05
+map_outputs: true
+model_name: ColorCNN_lightness_RGB_normalized
 num_epoch: 150
 step_size: 20
+weight_decay: 0
+normalize_rgb: True
+normalize_cielab: True

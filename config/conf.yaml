@@ -1,17 +1,17 @@
-model_name: "ColorGNNEmbedding_cnn"
-data_type: "processed_rgb_autoencoder"
-feature_size: 261
+model_name: "ColorGNNSmallEmbedding_toy"
+data_type: "processed_rgb_toy_dataset"
+feature_size: 1005
 
-threshold_for_neighbours: 0.4
+threshold_for_neighbours: 1
 
-loss_function: "CIELab2000"
+loss_function: "MSE"
 
-device: "cpu"
-lr: 0.02
+device: "cuda:2"
+lr: 0.01
 batch_size: 16
 weight_decay: 0
 num_epoch: 300
 
-encoder: "Autoencoder"
+node_to_mask: -1
 
-dataset_root: "../destijl_dataset"
+dataset_root: "../shape_dataset"

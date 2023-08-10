@@ -77,7 +77,6 @@ def train(data):
     model.train()
     optimizer.zero_grad()
     out = model(data)
-    loss = 0
     loss = criterion(out, data)
     loss.backward()
     optimizer.step()

@@ -40,11 +40,13 @@ class PreviewDataset(Dataset):
         # Image is a numpy array always. Convert to tensor at the end.
         if self.input_color_space == "CIELab":
             image = scicolor.rgb2lab(image)
-            if self.normalize_cielab:
-                image = torch.from_numpy(image)
-                image = normalize_CIELab(image)
+            image = torch.from_numpy(image)
+            # if self.normalize_cielab:
+            #     image = torch.from_numpy(image)
+            #     image = normalize_CIELab(image)
         else:
             image = torch.from_numpy(image)
+
         
         # Apply kmeans on RGB image always.
         bg_path = os.path.join("../destijl_dataset/01_background/" + self.sample_filenames[idx])
@@ -52,10 +54,10 @@ class PreviewDataset(Dataset):
         color = self.kmeans_for_bg(bg_path)[0]
 
         # If output is in CIELab space but input is in RGB, convert target to CIELab also.
-        if self.color_space == "CIELab" and self.input_color_space == "RGB":
+        if self.color_space == "CIELab":
             target_color = torch.squeeze(torch.tensor(RGB2CIELab(color.astype(np.int32))))
-            if self.normalize_cielab:
-                target_color = normalize_CIELab(target_color)
+            # if self.normalize_cielab:
+            #     target_color = normalize_CIELab(target_color)
         # Input and output is in RGB space or input and output is in CIELab space.
         # If Input is in CIELab and output is in RGB, than this is also valid since dataset is in RGB.
         else:
@@ -73,9 +75,16 @@ class PreviewDataset(Dataset):
                 image = image.reshape(-1, image.shape[0], image.shape[1]).type("torch.FloatTensor")
             # Apply the transformation
             image = self.transform(image)
+        
+        if self.normalize_rgb:
+            image /= 255
 
         if self.color_space == "RGB" and self.normalize_rgb:
             target_color /= 255
+
+        if self.normalize_cielab:
+            # we will only use lightness
+            target_color /= 100
 
         return image, target_color
     

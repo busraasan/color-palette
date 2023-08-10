@@ -43,10 +43,20 @@ input_size = config["input_size"]
 normalize_rgb = config["normalize_rgb"]
 normalize_cielab = config["normalize_cielab"]
 
+if out_features == 1:
+    out_type = "Lightness"
+else:
+    out_type = "Color"
+
+print("Evaluating for the model: ", model_name, "\n",
+      "Loss function: ", loss_function, "\n",
+      "Output Color Space: ", color_space, "\n",
+      "Color or Lightness?: ", out_type, "\n",
+      "Device: ", device, "\n")
 
 transform = transforms.Compose([
     transforms.Resize((input_size, input_size)),
-    transforms.Normalize((0.5,), (0.5,))
+    #transforms.Normalize((0.5,), (0.5,))
     ])
 
 model = model_switch_CNN(model_name, out_features).to(device)

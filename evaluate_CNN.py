@@ -46,12 +46,21 @@ normalize_cielab = config["normalize_cielab"]
 
 model_weight_path = "../CNN_models/" + model_name + "/weights/best.pth"
 
+if out_features == 1:
+    out_type = "Lightness"
+else:
+    out_type = "Color"
+
+print("Evaluating for the model: ", model_name, "\n",
+      "Loss function: ", loss_function, "\n",
+      "Output Color Space: ", color_space, "\n",
+      "Color or Lightness?: ", out_type, "\n",
+      "Device: ", device, "\n")
 ######################## Model ########################
 
 transform = transforms.Compose([
     transforms.Resize((input_size, input_size)),
-    transforms.ToTensor(), 
-    transforms.Normalize((0.5,), (0.5,))
+    #transforms.Normalize((255,), (255,))
     ])
 
 test_dataset = PreviewDataset(transform=transform, 
@@ -64,7 +73,7 @@ test_dataset = PreviewDataset(transform=transform,
 test_loader = DataLoader(test_dataset, batch_size=1, shuffle=False)
 num_of_plots = len(test_loader)
 
-model = model_switch_CNN(model_name, loss_function).to(device)
+model = model_switch_CNN(model_name, out_features).to(device)
 model.load_state_dict(torch.load(model_weight_path)["state_dict"])
 
 if loss_function == "MSE":
@@ -79,11 +88,16 @@ def test(data, color):
     model.eval()
     out = model(data)
 
-    if loss_function != "CIELab":
-        print(out[0])
-        loss = criterion(out[0], color[0]/255)
+    if out_features == 1:
+        if loss_function != "CIELab":
+            loss = criterion(out[0][0], color[0][0])
+        else:
+            loss = colormath_CIE2000(out[0][0], color[0][0])
     else:
-        loss = colormath_CIE2000(out[0], color[0])
+        if loss_function != "CIELab":
+            loss = criterion(out, color)
+        else:
+            loss = colormath_CIE2000(out, color)
     return loss, out
 
 
@@ -138,12 +152,16 @@ for i, (input_data, target_color) in enumerate(test_loader):
     val_losses.append(loss.item())
     # Get predicton and other colors in the palette
     ax = plt.subplot(rows, cols, plot_count+1)
+
     if color_space == "CIELab":
+        out = out.detach().cpu().numpy()
+        out = np.append(out, [[30.0, 30.0]], axis=1)
+        target_color = np.array([[target_color.detach().cpu().numpy()[0][0], 30.0, 30.0]])
         palette = np.clip(np.concatenate([CIELab2RGB(out), CIELab2RGB(target_color)]), a_min=0, a_max=1)
     else:
         palette = np.clip(np.concatenate([out.detach().cpu().numpy(), target_color/255]), a_min=0, a_max=1)
-    outputs.append(out.detach().cpu().numpy())
-    target_colors.append(target_color.detach().cpu().numpy())
+    outputs.append(out)
+    target_colors.append(target_color)
 
     my_palplot(palette, ax=ax)
 
