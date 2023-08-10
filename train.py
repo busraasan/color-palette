@@ -13,6 +13,7 @@ from utils import *
 import logging
 import yaml
 import argparse
+from config import *
 
 os.environ["CUDA_LAUNCH_BLOCKING"] = "1"
 
@@ -80,7 +81,7 @@ with open(config_file, 'r') as f:
 data_type = config["data_type"]
 model_name = config["model_name"]
 device = config["device"]
-dataset_root = config["dataset_root"]
+dataset_root = config.dataset
 loss_function = config["loss_function"]
 
 save_path = "../models/" + model_name + "/weights"

@@ -8,6 +8,7 @@ import numpy as np
 import yaml
 from utils import *
 from skimage.color import rgb2lab, lab2rgb
+from config import *
 
 with open("config/conf.yaml", 'r') as f:
     config = yaml.load(f, Loader=yaml.FullLoader)
@@ -136,4 +137,6 @@ class GraphDestijlDataset(Dataset):
         return new_data, target_color, node_to_mask
 
 if __name__ == '__main__':
-    dataset_obj = GraphDestijlDataset(root='../shape_dataset/')
+    config = DataConfig()
+    dataset_root = config.dataset
+    dataset_obj = GraphDestijlDataset(root=dataset_root)

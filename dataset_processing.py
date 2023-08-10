@@ -18,6 +18,7 @@ from torchvision.models import resnet50, ResNet50_Weights
 from model.CNN import Autoencoder
 
 from model.graph import DesignGraph
+from config import *
 
 class ProcessedDeStijl(Dataset):
     def __init__(self, data_path):
@@ -496,7 +497,9 @@ class ProcessedDeStijl(Dataset):
                 color = color.tolist()
 
 if __name__ == "__main__":
-    dataset = ProcessedDeStijl(data_path='../shape_dataset')
+    config = DataConfig()
+    dataset_root = config.dataset
+    dataset = ProcessedDeStijl(data_path=dataset_root)
     dataset.trial()
 
 

@@ -1,6 +1,9 @@
 # color-palette
 Repository for tracking the progress of color palette generation project using GNNs.
 
+
+Set dataset path from config.py (will move everything to that config later)
+
 To run training. Config gile is at config folder and content is described in train.py
 
 ```

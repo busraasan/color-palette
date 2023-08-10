@@ -9,6 +9,7 @@ import argparse
 import seaborn as sns
 import matplotlib.pyplot as plt
 from utils import *
+from config import *
 
 ######################## Set Parameters ########################
 
@@ -31,11 +32,12 @@ loss_function = config["loss_function"]
 
 model_weight_path = "../models/" + model_name + "/weights/best.pth"
 
+dataset_root = config.dataset
 ######################## Model ########################
 
 # Prepare dataset
 # Set test=True for testing on the test set. Otherwise it tests on the train set.
-test_dataset = GraphDestijlDataset(root='../shape_dataset', test=True)
+test_dataset = GraphDestijlDataset(root=dataset_root, test=True)
 test_loader = DataLoader(test_dataset, batch_size=1, shuffle=False)
 num_of_plots = len(test_loader)
 

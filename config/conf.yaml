@@ -13,5 +13,3 @@ weight_decay: 0
 num_epoch: 300
 
 node_to_mask: -1
-
-dataset_root: "../shape_dataset"
