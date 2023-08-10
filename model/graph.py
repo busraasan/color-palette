@@ -11,6 +11,7 @@ import math
 import cv2
 import yaml
 import argparse
+from config import *
 
 from torchvision import transforms
 
@@ -28,6 +29,9 @@ parser = argparse.ArgumentParser()
 parser.add_argument("--config_file", type=str, default="config/conf.yaml", help="Path to the config file.")
 args = parser.parse_args()
 config_file = args.config_file
+
+config = DataConfig()
+dataset_root = config.dataset
 
 with open(config_file, 'r') as f:
     config = yaml.load(f, Loader=yaml.FullLoader)
@@ -373,6 +377,6 @@ class DesignGraph():
                     y=torch.from_numpy(np.asarray(y)),
                     )
         
-        if not os.path.exists("../shape_dataset/"+data_type):
-            os.mkdir("../shape_dataset/"+data_type)
-        torch.save(data, os.path.join("../shape_dataset/"+data_type, f'data_{path_idx}.pt'))
+        if not os.path.exists(dataset_root+data_type):
+            os.mkdir(dataset_root+data_type)
+        torch.save(data, os.path.join(dataset_root+data_type, f'data_{path_idx}.pt'))

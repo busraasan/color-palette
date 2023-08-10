@@ -28,17 +28,17 @@ class GraphDestijlDataset(Dataset):
         into raw_dir (downloaded dataset) and processed_dir (processed data). 
         """
         self.test = test
-        self.sample_filenames = os.listdir(root + '/' + data_type +'/')
-        self.processed_data_dir = root + '/' + data_type + '/'
+        self.sample_filenames = os.listdir(root + data_type +'/')
+        self.processed_data_dir = root + data_type + '/'
 
         # If you want to use less data than the whole dataset, you can specify the range here.
         # Than it loads only samples up to that sample.
         # self.sample_filenames = ["data_{:04d}.pt".format(idx) for idx in range(0, 31)]
 
-        self.mean_node = np.load("dataset_statistics/mean_node.npy").astype(np.float32)
-        self.std_dev_node = np.load("dataset_statistics/std_dev_node.npy").astype(np.float32)
-        self.mean_edge = np.load("dataset_statistics/mean_edge.npy").astype(np.float32)
-        self.std_dev_edge = np.load("dataset_statistics/std_dev_edge.npy").astype(np.float32)
+        # self.mean_node = np.load("dataset_statistics/mean_node.npy").astype(np.float32)
+        # self.std_dev_node = np.load("dataset_statistics/std_dev_node.npy").astype(np.float32)
+        # self.mean_edge = np.load("dataset_statistics/mean_edge.npy").astype(np.float32)
+        # self.std_dev_edge = np.load("dataset_statistics/std_dev_edge.npy").astype(np.float32)
 
         # Train test filenames.
         self.train_filenames, self.test_filenames = train_test_split(self.sample_filenames, 
