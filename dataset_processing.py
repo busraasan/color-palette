@@ -38,12 +38,12 @@ class ProcessedDeStijl(Dataset):
         self.criteria = (cv2.TERM_CRITERIA_EPS + cv2.TERM_CRITERIA_MAX_ITER, 200, .1)
         self.flags = cv2.KMEANS_RANDOM_CENTERS
 
-        self.layers = ['image', 'background', 'text'] # Take this from config file later
+        self.layers = ['background', 'text', "decoration"] # Take this from config file later
         # self.layers = ['background', 'text']
         
-        # self.pretrained_model = resnet50(weights=ResNet50_Weights.IMAGENET1K_V1)
-        self.pretrained_model = Autoencoder()
-        self.pretrained_model.load_state_dict(torch.load("../CNN_models/CNNAutoencoder/weights/best.pth")["state_dict"])
+        self.pretrained_model = resnet50(weights=ResNet50_Weights.IMAGENET1K_V1)
+        # self.pretrained_model = Autoencoder()
+        # self.pretrained_model.load_state_dict(torch.load("../CNN_models/CNNAutoencoder/weights/best.pth")["state_dict"])
 
     def len(self):
         return self.dataset_size
@@ -390,14 +390,15 @@ class ProcessedDeStijl(Dataset):
 
             #create_xml("../destijl_dataset/xmls/03_decoration", path_idx+".xml", mapped_decoration_bboxes)
             if len(merged_bboxes) == 0:
-                create_xml("../destijl_dataset/xmls/04_text", path_idx+".xml", [[[0,0],[0,0],[0,0],[0,0]]])
+                create_xml(self.data_path+"/xmls/04_text", path_idx+".xml", [[[0,0],[0,0],[0,0],[0,0]]])
             else:
-                create_xml("../destijl_dataset/xmls/04_text", path_idx+".xml", merged_bboxes)
-            create_xml("../destijl_dataset/xmls/02_image", path_idx+".xml",  image_bboxes)
+                create_xml(self.data_path+"/xmls/04_text", path_idx+".xml", merged_bboxes)
+            create_xml(self.data_path+"/xmls/02_image", path_idx+".xml",  image_bboxes)
 
     def process_dataset(self, idx):
         '''
             Process each node. Construct graph features and save the features as pt files.
+            This code should be used after we have an annotated dataset.
         '''
         path_idx = "{:04d}".format(idx)
 
@@ -406,43 +407,66 @@ class ProcessedDeStijl(Dataset):
             'background': self.data_path + '/01_background/' + path_idx + '.png',
             'image': self.data_path + '/02_image/' + path_idx + '.png',
             'text': self.data_path + '/04_text/' + path_idx + '.png',
+            'decoration': self.data_path + '/03_decoration/' + path_idx + '.png',
         }
 
         annotation_path_dict = {
             'preview': self.data_path + '/xmls' +'/00_preview/' + path_idx + '.xml',
             'image': self.data_path + '/xmls' + '/02_image/' + path_idx + '.xml',
             'text': self.data_path + '/xmls' + '/04_text/' + path_idx + '.xml',
+            'decoration': self.data_path + '/xmls' + '/03_decoration/' + path_idx + '.xml',
         }
        
         all_bboxes = {
             'image':[], 
             'background':[], 
+            "decoration":[],
             'text':[]
         }
         all_images = {
             'image':[], 
             'background':[], 
+            "decoration":[],
             'text':[]
         }
 
+        # For each layer:
+        #   * save all bounding boxes to all_bboxes
+        #   * save all paths of images in which we extract the objects from --> to all_images
+        #   * We generally extract all images from the preview image so that path is preview image path
+        #   * We save this information to use in DesignGraph. It extracts colors from bounding boxes
+        #   using the image we want to extract them from.
+
         for i, layer in enumerate(self.layers):
+            # Check what is the layer, save information accordingly to dictionaries
             if layer == "background":
+                # load image as CV image
                 self.preview_img = cv2.imread(img_path_dict[layer])
+                # save the layer image path
                 img = img_path_dict[layer]
                 all_images[layer] = img
+                # since it is background, just add a trivial bbox. This is not used
                 all_bboxes[layer] = [[[0, 0], [self.preview_img.shape[0], 0], [self.preview_img.shape[0], self.preview_img.shape[1]], [0, self.preview_img.shape[1]]]]
             else:
                 if layer == 'text':
+                    # get the preview path since we extract text directly from preview image
                     img_path = img_path_dict['preview']
+                    # get annotations from xml
                     filename, bboxes = VOC2bbox(annotation_path_dict[layer])
+                    # assign bounding boxes and image path to extract colors later
                     all_bboxes[layer] = bboxes
                     all_images[layer] = img_path
-                elif layer == 'image':
+                elif layer == 'image' or layer == "decoration":
+                    # same logic is applied as text
                     img_path = img_path_dict['preview']
                     self.img_img = cv2.imread(img_path)
                     filename, bboxes = VOC2bbox(annotation_path_dict[layer])
+                    """
+                    This comment below is for checking whether the annotation boxes work for
+                    each bounding box. It saves the annotated image.
+                    """
                     # for k, box in enumerate(bboxes):
-                        # im = cv2.imread("../destijl_dataset/00_preview/0000.png")
+                        # im = cv2.imread("../destijl_dataset/00_preview/"+path_idx+".png")
                         # # [[xmin, ymin], [xmax, ymin], [xmax, ymax], [xmin, ymax]]
                         # xmin = box[0][0]
                         # xmax = box[1][0]
@@ -453,23 +477,26 @@ class ProcessedDeStijl(Dataset):
                         # cv2.imwrite("check_bboxes"+str(k)+".jpg", im)
                     all_bboxes[layer] = bboxes
                     all_images[layer] = img_path
+            
 
+        # Design graph constructs the graph object and saves it as a pt file.
         design_graph = DesignGraph(self.pretrained_model, all_images, all_bboxes, self.layers, img_path_dict['preview'], idx)
         return design_graph.get_all_colors_in_design()
 
     def trial(self):
-        for i in range(0, 1): 
+        # Save the samples in the range (0, n)
+        for i in range(0, 3101): 
             print("Sample: ", i)
             all_colors = self.process_dataset(i)
             for nested_list in all_colors:
                 color = nested_list[0]
+                # Fix if has unnecessary extra dimension
                 if len(color.shape) == 2:
                     color = color[0]
                 color = color.tolist()
 
 if __name__ == "__main__":
-    dataset = ProcessedDeStijl(data_path='../destijl_dataset')
-    #dataset.process_dataset()
+    dataset = ProcessedDeStijl(data_path='../shape_dataset')
     dataset.trial()
 
 
