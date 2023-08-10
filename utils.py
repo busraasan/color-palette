@@ -24,7 +24,15 @@ from model.CNN import *
     USE COLORMATH IN THE LOSS
 '''
 
-def model_switch_CNN(model_name, loss_function, map_outputs=None):
+def normalize_CIELab(cielab_color) -> torch.Tensor:
+    """
+        Normalize CIELab tensors.
+    """
+    cielab_color += torch.Tensor([0, 127, 127])
+    cielab_color /= torch.Tensor([100, 255, 255])
+    return cielab_color
+
+def model_switch_CNN(model_name, out_features=3):
     if "finetuneresnet18_classify" in model_name.lower():
         return FinetuneResNet18_classify()
     elif "resnet18" in model_name.lower():
@@ -32,11 +40,14 @@ def model_switch_CNN(model_name, loss_function, map_outputs=None):
     elif "colorcnnbigger" in model_name.lower():
         return ColorCNNBigger()
     elif "colorcnn" in model_name.lower():
-        return ColorCNN()
+        return ColorCNN(out_feature=out_features)
     else:
         assert "There is no such model"
 
 def model_switch(model_name, feature_size):
+
+    # Search for some keywords in the model_name and load the correct model accordingly.
+    # This way, we can have save more information related to the same model with different configurations.
     if "ColorGNNEmbeddingClassification" in model_name:
         return ColorGNNEmbeddingClassification(feature_size=feature_size)
     elif "ColorGNNSmallEmbedding" in model_name:
@@ -51,6 +62,8 @@ def model_switch(model_name, feature_size):
         return ColorGNNBigger(feature_size=feature_size)
     elif "ColorGNN" in model_name:
         return ColorGNN(feature_size=feature_size)
+    elif "ColorAttentionGNN" in model_name:
+        return ColorAttentionGNN(feature_size=feature_size)
     else:
         assert "There is no such model."
         
@@ -79,6 +92,7 @@ def save_plot(train_losses, val_losses, loss_type, loss_path):
     plt.savefig(os.path.join(loss_path, "loss_" + loss_type + ".png"), dpi=300)
     plt.close()
 
+# COLOR CONVERSION FUNCTIONS
 def CIELab2RGB(palette):
     obj_palette = []
     for color in palette:
@@ -100,6 +114,7 @@ def bgr2rgb(color):
     color = [z, y, x]
     return color
 
+# CIELAB DISTANCE FUNCTIONS (DEPRECATED)
 def CIELab_distance(color1, color2, color_space="RGB"):
     
     if color_space == "BGR":
@@ -123,16 +138,20 @@ def CIELab_distance2(lab1, lab2):
     b = (lab1[2] - lab2[2])**2
     return l,a,b, torch.sum( (lab1[0] - lab2[0])**2 + (lab1[1] - lab2[1])**2 + (lab1[2] - lab2[2])**2 )
 
-def colormath_CIE2000(color1, color2):
+# THESE ARE USED. HOWEVER, YOU NEED TO HAVE THE EDITED VERSION OF COLORMATH LIBRARY BY ME.
+def colormath_CIE2000(color1, color2, normalized=False):
     # color1 = LabColor(*color1)
     # color2 = LabColor(*color2)
-    x = delta_e_cie2000(color1, color2)
+    x = delta_e_cie2000(color1, color2, normalized)
     return x
 
 def colormath_CIECMC(color1, color2):
     x = delta_e_cmc(color1, color2)
     return x
 
+# BOUNDING BOX TO VOC
+# bbox form: [[xmin, ymin], [xmax, ymin], [xmax, ymax], [xmin, ymax]]
+# (always like this)
 def VOC2bbox(xml_file: str):
 
     tree = ET.parse(xml_file)
@@ -159,6 +178,8 @@ def VOC2bbox(xml_file: str):
 
     return filename, list_with_all_boxes
 
+# BBOX 2 VOC Conversion
+# input bbox is in the shape: [[xmin, ymin], [xmax, ymin], [xmax, ymax], [xmin, ymax]]
 def bbox2VOC(filename, layer_name, bbox):
     bbox_smallest_x, bbox_smallest_y = np.min(bbox, axis=0)
     bbox_biggest_x, bbox_biggest_y = np.max(bbox, axis=0)
@@ -166,6 +187,7 @@ def bbox2VOC(filename, layer_name, bbox):
     height = bbox_biggest_y - bbox_smallest_y
     return filename, width, height, layer_name, bbox_smallest_x, bbox_smallest_y, bbox_biggest_x, bbox_biggest_y
 
+# CREATING XML FILES.
 def create_xml(folder, filename, bbox_list):
 
     x = folder.split("/")
@@ -288,5 +310,41 @@ def delete_too_small_bboxes(boxes):
 
 def similar(a, b):
     return SequenceMatcher(None, a, b).ratio()
+
+def check_distributions(colors=None):
+    
+    # If you dont provide any colors, then just calculate the distribution of the 
+    # toy dataset input.
+    if colors == None:
+        path = "../shape_dataset/processed_rgb_toy_dataset"
+        colors = []
+        for i in range(1000):
+            data_path = path+"/data_{:04d}.pt".format(i)
+            data = torch.load(data_path)
+            for node in data.x:
+                rgb = node[-3:]
+                colors.append(rgb)
+
+    # Otherwise get color list and calculate.
+    n_bins = 20
+    colors = np.array(colors)
+    fig, axs = plt.subplots(1, 3, figsize=(30,10))
+    plt.suptitle("Evaluation Channel Distributions")
+    N, bins, patches = axs[0].hist(colors[:, -3], bins=n_bins)
+    axs[0].set_title("Red Channel")
+    axs[0].set_xlabel("RGB Value")
+    axs[0].set_ylabel("Count")
+    N, bins, patches = axs[1].hist(colors[:, -2], bins=n_bins)
+    axs[1].set_title("Green Channel")
+    axs[1].set_xlabel("RGB Value")
+    axs[1].set_ylabel("Count")
+    N, bins, patches = axs[2].hist(colors[:, -1], bins=n_bins)
+    axs[2].set_title("Blue Channel")
+    axs[2].set_xlabel("RGB Value")
+    axs[2].set_ylabel("Count")
+    plt.show()
+    plt.savefig("dist")
+    plt.close()
+
 
     
