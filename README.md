@@ -18,3 +18,7 @@ python dataset_processing.py
 ```
 
 To change the used number of samples, look at dataset.py.
+To crate toy dataset, download this [dataset_generator](https://github.com/busraasan/dataset_generator) repo and run the command below. You can specift dataset size from config.
+```
+python generate.py
+```
