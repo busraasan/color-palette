@@ -14,6 +14,7 @@ with open("config/conf.yaml", 'r') as f:
 
 data_type = config["data_type"]
 threshold = config["threshold_for_neighbours"]
+mask_type = config["node_to_mask"]
 
 print(f"Torch version: {torch.__version__}")
 print(f"Cuda available: {torch.cuda.is_available()}")
@@ -29,13 +30,16 @@ class GraphDestijlDataset(Dataset):
         self.sample_filenames = os.listdir(root + '/' + data_type +'/')
         self.processed_data_dir = root + '/' + data_type + '/'
 
-        self.sample_filenames = ["data_{:04d}.pt".format(idx) for idx in range(0, 113)]
+        # If you want to use less data than the whole dataset, you can specify the range here.
+        # Than it loads only samples up to that sample.
+        # self.sample_filenames = ["data_{:04d}.pt".format(idx) for idx in range(0, 31)]
 
         self.mean_node = np.load("dataset_statistics/mean_node.npy").astype(np.float32)
         self.std_dev_node = np.load("dataset_statistics/std_dev_node.npy").astype(np.float32)
         self.mean_edge = np.load("dataset_statistics/mean_edge.npy").astype(np.float32)
         self.std_dev_edge = np.load("dataset_statistics/std_dev_edge.npy").astype(np.float32)
 
+        # Train test filenames.
         self.train_filenames, self.test_filenames = train_test_split(self.sample_filenames, 
                                                             test_size=0.2, 
                                                             random_state=42)
@@ -67,44 +71,53 @@ class GraphDestijlDataset(Dataset):
             Input: graph data
 
             Mask the color of one node. The ground truth color is the last 3 dimension of the feature vector.
-            Data is saved as RGB. Convert unnormalized RGB ground truth color to Lab.
+            Data is saved as RGB. 
+            If you want you can convert unnormalized RGB ground truth color to Lab.
             (Conversion is done using COLORMATH)
-            new_data has unnormalized RGB colors, color_to_hide as lab colors.
             Put mask on a random node's color information by setting that color to [0, 0, 0].
-            Normalize the edge attributes.
 
             Return: new_data with masked RGB colors, color_to_hide in lab, node_to_mask scalar
         '''
 
+        # Take number of nodes
         n_nodes = len(data.x)
-        node_to_mask = random.randint(0, n_nodes-2)
-        #node_to_mask = n_nodes-2
+        if mask_type == -1:
+            # Chose the color to mask randomly
+            node_to_mask = random.randint(0, n_nodes-2)
+        else:
+            # Mask the second last node each time
+            node_to_mask = n_nodes-2
+
+        # If you chosed a folder that has processed_rgb name in it, then all the colors are stores in (0, 255) RGB.
         feature_vector = data.x
+        # This is our target.
         color_to_hide = feature_vector[node_to_mask, -3:].clone()
 
-        color_to_hide = torch.tensor(RGB2CIELab(color_to_hide.numpy().astype(np.int32)))
+        # Conversion to cielab. I do not use it anymore.
+        #color_to_hide = torch.tensor(RGB2CIELab(color_to_hide.numpy().astype(np.int32)))
         #color_to_hide = torch.tensor(rgb2lab(color_to_hide.numpy().astype(np.int32)))
+
+        # Set node to mask in feature vector to zero.
         feature_vector[node_to_mask, -3:] = torch.Tensor([0.0, 0.0, 0.0])
+        # Assing the new feature vector to the graph.
         new_data = data.clone()
         new_data.x = feature_vector
-        max = new_data.edge_weight.max()
-        if max == 0:
-            max = 1
-        new_data.edge_weight = (new_data.edge_weight) / max + 1e-8
-        #print("previous edges")
-        #print(new_data.edge_index, new_data.edge_weight)
 
-        new_edge_weight = []
-        new_edge_index = []
-        for k, edge in enumerate(new_data.edge_weight):
-            if edge.item() < threshold:
-                new_edge_weight.append(edge.item())
-                new_edge_index.append([new_data.edge_index[0][k], new_data.edge_index[1][k]])
+        # This code below is used if we want to apply a threshold while adding edges.
+        # It just removes the edges with a higher distance than the threshold.
+        
+        # new_edge_weight = []
+        # new_edge_index = []
+        # for k, edge in enumerate(new_data.edge_weight):
+        #     if edge.item() < threshold:
+        #         new_edge_weight.append(edge.item())
+        #         new_edge_index.append([new_data.edge_index[0][k], new_data.edge_index[1][k]])
 
-        new_data.edge_index = torch.Tensor(new_edge_index).T
-        new_data.edge_weight = torch.Tensor(new_edge_weight)
+        # new_data.edge_index = torch.Tensor(new_edge_index).T
+        # new_data.edge_weight = torch.Tensor(new_edge_weight)
         #print("New calculations")
         #print(new_data.edge_index, new_data.edge_weight)
+
         return new_data, color_to_hide, node_to_mask
 
     def len(self):
@@ -123,4 +136,4 @@ class GraphDestijlDataset(Dataset):
         return new_data, target_color, node_to_mask
 
 if __name__ == '__main__':
-    dataset_obj = GraphDestijlDataset(root='../destijl_dataset/')
+    dataset_obj = GraphDestijlDataset(root='../shape_dataset/')
