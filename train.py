@@ -16,7 +16,28 @@ import argparse
 
 os.environ["CUDA_LAUNCH_BLOCKING"] = "1"
 
+"""
+    *************** HOW TO FILL CONFIG FILE ***************
+    Model name has an hierarchy. In utils, there is a model_switch function. 
+    You can use ColorGNNEmbedding model for example, and add some description at the end such as: ColorGNNEmbedding_lr0.5 etc.
+    Another example, you can use ColorGNNSmallEmbedding and add some descriptions.
+    ColorGNN model is for the examples without embedding color, relative size and layer.
+    model_switch function only searches for whether keywords stated in the if else section of that function is included in the model name.
+    Than it choses that model to load.
+    Feature size is the output of the embedding (1000) + my features (5) ([layer, relative size, R, G, B])
+    That is constructed in this order [layer, embedding, relative size, R, G, B]
+
+    In addition to model, you can specify lr, weight decay etc.
+    You can set dataset location as the root variable.
+    You can set data type which is basically what kind of features we use. 
+    There are with resnet embedding/without resnet embedding options. There are also saving with RGB or CIELab options.
+    However, sticking to the RGB is the most useful one. 
+    For that, you can use processed_rgb for normal dataset, processed_rgb_toy_dataset for toy dataset. These are folder names for pt files inside the root folder.
+"""
+
 '''
+    THINGS WE TRIED
+
     Grey might have Minimum distance to everything else, Penalize grey based on the saturation
     Dataset size is small -- DONE
     smaller network --- DONE
